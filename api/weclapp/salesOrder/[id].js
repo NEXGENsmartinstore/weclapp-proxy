@@ -1,7 +1,10 @@
 // /api/weclapp/salesOrder/[id].js
-export const config = { runtime: 'nodejs18.x' };
+
+// Erzwinge Node.js Runtime (kein Edge)
+export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
+  // CORS zuerst setzen & OPTIONS sofort beantworten
   res.setHeader('Access-Control-Allow-Origin', 'https://smart-instore.eu');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -34,7 +37,7 @@ export default async function handler(req, res) {
     const text = await upstream.text();
 
     res.status(upstream.status);
-    res.setHeader('Content-Type', 'application/json');  // <-- fix
+    res.setHeader('Content-Type', 'application/json');
     return res.send(text);
   } catch (err) {
     return res.status(500).json({
