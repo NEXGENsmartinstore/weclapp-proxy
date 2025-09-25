@@ -11,29 +11,27 @@ export default async function handler(req, res) {
 
   try {
     const { id } = req.query || {};
-    if (!id) {
-      return res.status(400).json({ error: 'Missing id in path' });
-    }
-
     const host = process.env.WECLAPP_HOST;
     const token = process.env.WECLAPP_TOKEN;
-
-    if (!host || !token) {
-      return res.status(500).json({ error: 'Missing env variables' });
-    }
 
     const url = `${host.replace(/\/$/, '')}/salesOrder/id/${encodeURIComponent(id)}`;
 
     const upstream = await fetch(url, {
       method: 'GET',
       headers: {
-        // ganz genau so schreiben:
-        'AuthenticationToken': `${token}`,
+        'AuthenticationToken': token,
         'Accept': 'application/json'
       }
     });
 
     const text = await upstream.text();
+
+    // DEBUG-Ausgabe ins Log:
+    console.log("Proxy Request URL:", url);
+    console.log("AuthenticationToken:", token ? "gesetzt" : "leer");
+    console.log("Upstream Status:", upstream.status);
+    console.log("Upstream Response (first 200 chars):", text.slice(0,200));
+
     res.status(upstream.status);
     res.setHeader('Content-Type', 'application/json');
     return res.send(text);
