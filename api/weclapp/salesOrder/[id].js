@@ -1,10 +1,6 @@
-// /api/weclapp/salesOrder/[id].js
-
-// Erzwinge Node.js Runtime (kein Edge)
 export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
-  // CORS zuerst setzen & OPTIONS sofort beantworten
   res.setHeader('Access-Control-Allow-Origin', 'https://smart-instore.eu');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -27,15 +23,17 @@ export default async function handler(req, res) {
     }
 
     const url = `${host.replace(/\/$/, '')}/salesOrder/id/${encodeURIComponent(id)}`;
+
     const upstream = await fetch(url, {
+      method: 'GET',
       headers: {
-        'AuthenticationToken': token,
+        // ganz genau so schreiben:
+        'AuthenticationToken': `${token}`,
         'Accept': 'application/json'
       }
     });
 
     const text = await upstream.text();
-
     res.status(upstream.status);
     res.setHeader('Content-Type', 'application/json');
     return res.send(text);
