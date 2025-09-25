@@ -14,7 +14,8 @@ export default async function handler(req, res) {
     const host = process.env.WECLAPP_HOST;
     const token = process.env.WECLAPP_TOKEN;
 
-    const url = `${host.replace(/\/$/, '')}/salesOrder/id/${encodeURIComponent(id)}`;
+	const url = `${host.replace(/\/$/, '')}/webapp/api/v1/salesOrder/id/${encodeURIComponent(id)}`;
+
 
     const upstream = await fetch(url, {
       method: 'GET',
