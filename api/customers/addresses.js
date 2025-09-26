@@ -54,14 +54,16 @@ export default async function handler(req, res) {
 
 // ---- Helpers ----
 function parseCsv(text) {
+  // Erkennung: Komma oder Semikolon als Trenner
+  const delimiter = text.includes(';') ? ';' : ',';
+
   const lines = text.trim().split(/\r?\n/);
   if (lines.length === 0) return [];
-  // Komma-getrennt, Header in erster Zeile
-  const header = lines[0].split(',').map(h => h.trim());
+  const header = lines[0].split(delimiter).map(h => h.trim());
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i]) continue;
-    const cols = lines[i].split(',').map(c => c.trim());
+    const cols = lines[i].split(delimiter).map(c => c.trim());
     const obj = {};
     header.forEach((h, idx) => obj[h] = cols[idx] ?? '');
     rows.push(obj);
