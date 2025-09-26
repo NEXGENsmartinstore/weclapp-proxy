@@ -36,14 +36,13 @@ export default async function handler(req, res) {
       if (!customerNumber) continue;
       if (!setIds.has(customerNumber)) continue;
 
-      out[customerNumber] = {
-        company: (r['Firma']   || r['B'] || '').toString().trim(),
-        street:  (r['Straße']  || r['Strasse'] || r['C'] || '').toString().trim(),
-        zip:     (r['PLZ']     || r['D'] || '').toString().trim(),
-        city:    (r['Stadt']   || r['E'] || '').toString().trim(),
-        // optional: Land, falls später Spalte F
-        // country: (r['Land'] || r['F'] || '').toString().trim()
-      };
+out[customerNumber] = {
+  company: r['Firma'] || '',
+  street:  r['Straße'] || r['Strasse'] || '',
+  zip:     r['PLZ'] || '',
+  city:    r['Stadt'] || ''
+};
+
     }
 
     return res.status(200).json({ addresses: out });
@@ -54,22 +53,35 @@ export default async function handler(req, res) {
 
 // ---- Helpers ----
 function parseCsv(text) {
-  // Erkennung: Komma oder Semikolon als Trenner
-  const delimiter = text.includes(';') ? ';' : ',';
-
   const lines = text.trim().split(/\r?\n/);
   if (lines.length === 0) return [];
-  const header = lines[0].split(delimiter).map(h => h.trim());
+
+  // Robust split: trennt an Kommas, aber entfernt führende/abschließende Quotes
+  const splitLine = (line) =>
+    line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+        .map(c => c.replace(/^"(.*)"$/, '$1').trim());
+
+  const header = splitLine(lines[0]);
   const rows = [];
+
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i]) continue;
-    const cols = lines[i].split(delimiter).map(c => c.trim());
-    const obj = {};
-    header.forEach((h, idx) => obj[h] = cols[idx] ?? '');
+    const cols = splitLine(lines[i]);
+
+    // Nur die ersten 5 Spalten beachten (alles dahinter sind leere)
+    const obj = {
+      Kundennummer: cols[0] || '',
+      Firma: cols[1] || '',
+      Straße: cols[2] || '',
+      PLZ: cols[3] || '',
+      Stadt: cols[4] || ''
+    };
     rows.push(obj);
   }
+
   return rows;
 }
+
 
 function readIds(req) {
   return new Promise((resolve, reject) => {
