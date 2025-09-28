@@ -14,13 +14,13 @@
 
   <label for="endpoint">API wählen:</label>
   <select id="endpoint" onchange="toggleInput()">
-    <option value="order">Sales Order (mit ID)</option>
+    <option value="order">Sales Order (per ID oder orderNumber)</option>
     <option value="customer">Customer (Liste)</option>
   </select>
 
   <div id="orderInput">
-    <label for="orderId">Order-Nr.:</label>
-    <input id="orderId" type="text" value="12345">
+    <label for="orderKey">Order-ID oder OrderNumber:</label>
+    <input id="orderKey" type="text" placeholder="z.B. AB2006779 oder UUID">
   </div>
 
   <button onclick="loadData()">Laden</button>
@@ -39,10 +39,14 @@
       let url;
 
       if (endpoint === "order") {
-        const orderNumber = document.getElementById("orderId").value;
-        url = `/api/weclapp/salesOrder/${orderNumber}`;
+        const key = document.getElementById("orderKey").value.trim();
+        if (!key) {
+          document.getElementById("result").textContent = "Bitte OrderNumber oder ID eingeben!";
+          return;
+        }
+        url = `/api/weclapp/salesOrder/${encodeURIComponent(key)}`;
       } else if (endpoint === "customer") {
-        url = `/api/customers/customer`;
+        url = `/api/customer`;
       }
 
       try {
