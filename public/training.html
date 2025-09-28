@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Weclapp Training</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; }
+    th { background: #eee; }
+    label, select, input, button { margin: 0.5rem 0; display: block; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 5px; max-height: 200px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Weclapp Training</h1>
+
+  <label for="endpoint">API wählen:</label>
+  <select id="endpoint" onchange="toggleInput()">
+    <option value="order">Sales Order (per ID oder orderNumber)</option>
+    <option value="customer">Customer (Liste)</option>
+  </select>
+
+  <div id="orderInput">
+    <label for="orderKey">Order-ID oder OrderNumber:</label>
+    <input id="orderKey" type="text" placeholder="z.B. AB2006779 oder UUID">
+  </div>
+
+  <button onclick="loadData()">Laden</button>
+
+  <h2>Antwort (Tabelle):</h2>
+  <div id="tableResult">Noch keine Daten</div>
+
+  <h2>Rohdaten (JSON):</h2>
+  <pre id="jsonResult">Noch keine Daten</pre>
+
+  <script>
+    function toggleInput() {
+      const endpoint = document.getElementById("endpoint").value;
+      document.getElementById("orderInput").style.display = endpoint === "order" ? "block" : "none";
+    }
+
+    async function loadData() {
+      const endpoint = document.getElementById("endpoint").value;
+      let url;
+
+      if (endpoint === "order") {
+        const key = document.getElementById("orderKey").value.trim();
+        if (!key) {
+          document.getElementById("jsonResult").textContent = "Bitte OrderNumber oder ID eingeben!";
+          return;
+        }
+        url = `/api/weclapp/salesOrder/${encodeURIComponent(key)}`;
+      } else if (endpoint === "customer") {
+        url = `/api/customer`;
+      }
+
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+
+        // JSON immer anzeigen
+        document.getElementById("jsonResult").textContent = JSON.stringify(data, null, 2);
+
+        // Tabelle abhängig vom Endpoint bauen
+        if (endpoint === "order") {
+          renderOrderTable(data);
+        } else if (endpoint === "customer") {
+          renderCustomerTable(data);
+        }
+      } catch (err) {
+        document.getElementById("jsonResult").textContent = "Fehler: " + err.message;
+        document.getElementById("tableResult").innerHTML = "Keine Tabelle.";
+        console.error("API-Fehler:", err);
+      }
+    }
+
+    function renderOrderTable(data) {
+      const list = Array.isArray(data.result) ? data.result : [data];
+      if (!list || list.length === 0) {
+        document.getElementById("tableResult").innerHTML = "Keine Aufträge gefunden.";
+        return;
+      }
+      let html = "<table><tr><th>OrderNumber</th><th>CustomerNumber</th><th>Status</th></tr>";
+      list.forEach(o => {
+        html += `<tr>
+          <td>${o.orderNumber || ""}</td>
+          <td>${o.customerNumber || ""}</td>
+          <td>${o.status || ""}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      document.getElementById("tableResult").innerHTML = html;
+    }
+
+    function renderCustomerTable(data) {
+      const list = data.result || [];
+      if (!list || list.length === 0) {
+        document.getElementById("tableResult").innerHTML = "Keine Kunden gefunden.";
+        return;
+      }
+      let html = "<table><tr><th>Kundennummer</th><th>Name</th><th>Telefon</th><th>Email</th></tr>";
+      list.forEach(c => {
+        html += `<tr>
+          <td>${c.number || ""}</td>
+          <td>${c.name || ""}</td>
+          <td>${c.phone || ""}</td>
+          <td>${c.email || ""}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      document.getElementById("tableResult").innerHTML = html;
+    }
+
+    // Initial
+    toggleInput();
+  </script>
+</body>
+</html>
