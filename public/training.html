@@ -39,8 +39,8 @@
       let url;
 
       if (endpoint === "order") {
-        const id = document.getElementById("orderId").value;
-        url = `/api/weclapp/salesOrder/${id}`;
+        const orderNumber = document.getElementById("orderId").value;
+        url = `/api/weclapp/salesOrder/${orderNumber}`;
       } else if (endpoint === "customer") {
         url = `/api/customers/customer`;
       }
