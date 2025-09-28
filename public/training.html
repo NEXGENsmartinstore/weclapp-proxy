@@ -6,22 +6,47 @@
   <style>
     body { font-family: sans-serif; margin: 2rem; }
     pre { background: #f4f4f4; padding: 1rem; border-radius: 5px; }
+    label, select, input, button { margin: 0.5rem 0; display: block; }
   </style>
 </head>
 <body>
-  <h1>Sales Order Test</h1>
-  <label for="orderId">Order-ID:</label>
-  <input id="orderId" type="text" value="12345">
-  <button onclick="loadOrder()">Laden</button>
+  <h1>Weclapp Training</h1>
+
+  <label for="endpoint">API wählen:</label>
+  <select id="endpoint" onchange="toggleInput()">
+    <option value="order">Sales Order (mit ID)</option>
+    <option value="customer">Customer (Liste)</option>
+  </select>
+
+  <div id="orderInput">
+    <label for="orderId">Order-ID:</label>
+    <input id="orderId" type="text" value="12345">
+  </div>
+
+  <button onclick="loadData()">Laden</button>
 
   <h2>Antwort:</h2>
   <pre id="result">Noch keine Daten</pre>
 
   <script>
-    async function loadOrder() {
-      const id = document.getElementById("orderId").value;
+    function toggleInput() {
+      const endpoint = document.getElementById("endpoint").value;
+      document.getElementById("orderInput").style.display = endpoint === "order" ? "block" : "none";
+    }
+
+    async function loadData() {
+      const endpoint = document.getElementById("endpoint").value;
+      let url;
+
+      if (endpoint === "order") {
+        const id = document.getElementById("orderId").value;
+        url = `/api/${id}`;
+      } else if (endpoint === "customer") {
+        url = `/api/customer`;
+      }
+
       try {
-        const resp = await fetch(`/api/${id}`);
+        const resp = await fetch(url);
         if (!resp.ok) {
           throw new Error("HTTP " + resp.status);
         }
@@ -32,6 +57,9 @@
         console.error("API-Fehler:", err);
       }
     }
+
+    // Initial
+    toggleInput();
   </script>
 </body>
 </html>
