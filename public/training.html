@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Weclapp Training</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Sales Order Test</h1>
+  <label for="orderId">Order-ID:</label>
+  <input id="orderId" type="text" value="12345">
+  <button onclick="loadOrder()">Laden</button>
+
+  <h2>Antwort:</h2>
+  <pre id="result">Noch keine Daten</pre>
+
+  <script>
+    async function loadOrder() {
+      const id = document.getElementById("orderId").value;
+      try {
+        const resp = await fetch(`/api/${id}`);
+        if (!resp.ok) {
+          throw new Error("HTTP " + resp.status);
+        }
+        const data = await resp.json();
+        document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById("result").textContent = "Fehler: " + err.message;
+        console.error("API-Fehler:", err);
+      }
+    }
+  </script>
+</body>
+</html>
