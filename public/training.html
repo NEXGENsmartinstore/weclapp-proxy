@@ -5,8 +5,11 @@
   <title>Weclapp Training</title>
   <style>
     body { font-family: sans-serif; margin: 2rem; }
-    pre { background: #f4f4f4; padding: 1rem; border-radius: 5px; }
+    table { border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; }
+    th { background: #eee; }
     label, select, input, button { margin: 0.5rem 0; display: block; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 5px; max-height: 200px; overflow: auto; }
   </style>
 </head>
 <body>
@@ -25,8 +28,11 @@
 
   <button onclick="loadData()">Laden</button>
 
-  <h2>Antwort:</h2>
-  <pre id="result">Noch keine Daten</pre>
+  <h2>Antwort (Tabelle):</h2>
+  <div id="tableResult">Noch keine Daten</div>
+
+  <h2>Rohdaten (JSON):</h2>
+  <pre id="jsonResult">Noch keine Daten</pre>
 
   <script>
     function toggleInput() {
@@ -41,7 +47,7 @@
       if (endpoint === "order") {
         const key = document.getElementById("orderKey").value.trim();
         if (!key) {
-          document.getElementById("result").textContent = "Bitte OrderNumber oder ID eingeben!";
+          document.getElementById("jsonResult").textContent = "Bitte OrderNumber oder ID eingeben!";
           return;
         }
         url = `/api/weclapp/salesOrder/${encodeURIComponent(key)}`;
@@ -51,15 +57,60 @@
 
       try {
         const resp = await fetch(url);
-        if (!resp.ok) {
-          throw new Error("HTTP " + resp.status);
-        }
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
-        document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+
+        // JSON immer anzeigen
+        document.getElementById("jsonResult").textContent = JSON.stringify(data, null, 2);
+
+        // Tabelle abhängig vom Endpoint bauen
+        if (endpoint === "order") {
+          renderOrderTable(data);
+        } else if (endpoint === "customer") {
+          renderCustomerTable(data);
+        }
       } catch (err) {
-        document.getElementById("result").textContent = "Fehler: " + err.message;
+        document.getElementById("jsonResult").textContent = "Fehler: " + err.message;
+        document.getElementById("tableResult").innerHTML = "Keine Tabelle.";
         console.error("API-Fehler:", err);
       }
+    }
+
+    function renderOrderTable(data) {
+      const list = Array.isArray(data.result) ? data.result : [data];
+      if (!list || list.length === 0) {
+        document.getElementById("tableResult").innerHTML = "Keine Aufträge gefunden.";
+        return;
+      }
+      let html = "<table><tr><th>OrderNumber</th><th>CustomerNumber</th><th>Status</th></tr>";
+      list.forEach(o => {
+        html += `<tr>
+          <td>${o.orderNumber || ""}</td>
+          <td>${o.customerNumber || ""}</td>
+          <td>${o.status || ""}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      document.getElementById("tableResult").innerHTML = html;
+    }
+
+    function renderCustomerTable(data) {
+      const list = data.result || [];
+      if (!list || list.length === 0) {
+        document.getElementById("tableResult").innerHTML = "Keine Kunden gefunden.";
+        return;
+      }
+      let html = "<table><tr><th>Kundennummer</th><th>Name</th><th>Telefon</th><th>Email</th></tr>";
+      list.forEach(c => {
+        html += `<tr>
+          <td>${c.number || ""}</td>
+          <td>${c.name || ""}</td>
+          <td>${c.phone || ""}</td>
+          <td>${c.email || ""}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      document.getElementById("tableResult").innerHTML = html;
     }
 
     // Initial
