@@ -1,20 +1,18 @@
 // api/weclapp/salesOrder/order-builder.js
 const { mapTicketToOrderRules } = require('./rules');
 
-/**
- * Baut das vollständige Payload für /salesOrder auf
- */
 function buildSalesOrderPayload(ticket, customerId) {
-  const { commission, orderItems } = mapTicketToOrderRules(ticket);
+  const { commission, orderItems, plannedDeliveryDate } = mapTicketToOrderRules(ticket);
 
   const payload = {
     customerId,
     title: `Auto-Auftrag zu Ticket ${ticket.ticketNumber || ticket.id}`,
     currency: 'EUR',
-    commission
+    commission,
+    plannedDeliveryDate
   };
 
-  if (orderItems.length > 0) {
+  if (orderItems && orderItems.length > 0) {
     payload.orderItems = orderItems;
   }
 
@@ -22,3 +20,4 @@ function buildSalesOrderPayload(ticket, customerId) {
 }
 
 module.exports = { buildSalesOrderPayload };
+
