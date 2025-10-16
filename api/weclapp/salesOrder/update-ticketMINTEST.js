@@ -46,7 +46,7 @@ async function handler(req, res) {
     const payload = { id: ticketId, subject: newSubject };
     console.log('📤 Sende Update an Weclapp:', JSON.stringify(payload, null, 2));
 
-    const result = await weclappFetch(`/ticket/update`, {
+    const result = await weclappFetch(`/helpdeskTicket/update`, {
       method: 'POST',
       body: JSON.stringify(payload)
     });
