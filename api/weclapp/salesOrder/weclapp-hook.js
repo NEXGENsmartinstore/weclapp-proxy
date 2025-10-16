@@ -56,40 +56,4 @@ async function handler(req, res) {
     const payload = ensureJsonBody(req);
     const ticket = payload?.entity?.id ? payload.entity : payload;
 
-    console.log('➡️ Webhook gestartet für Ticket', ticket?.id);
-
-    if (!ticket?.id) {
-      console.log('❌ Kein Ticket in Payload – nichts zu tun.');
-      return res.status(200).json({ ok: true, skipped: 'no-ticket' });
-    }
-
-    // Frisches Ticket holen, um alle Felder sicher zu haben
-    const freshTicket = await weclappFetch(`/ticket/id/${ticket.id}`, { method: 'GET' });
-    const { ticketStatusId, number, title, partyId, contactId } = freshTicket || {};
-
-    console.log('📦 Ticketdaten:', {
-      ticketId: ticket.id,
-      ticketStatusId,
-      partyId,
-      contactId
-    });
-
-    // Status prüfen
-    if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
-      console.log(`⏭️ Status passt nicht. Erwartet ${TARGET_STATUS_ID}, ist ${ticketStatusId}.`);
-      return res.status(200).json({ ok: true, skipped: 'status-mismatch' });
-    }
-
-    // -------------------------------
-    // Kunde bestimmen
-    // -------------------------------
-    let resolvedCustomerId = partyId || null;
-
-    // Fallback: aus Contact ableiten, falls vorhanden
-    if (!resolvedCustomerId && contactId) {
-      console.log(`🔎 Kein partyId vorhanden – hole contact ${contactId} ...`);
-      try {
-        const contact = await weclappFetch(`/contact/id/${contactId}`, { method: 'GET' });
-        resolvedCustomerId = contact.customerId;
-        console.log('🧩 Aus Contact abgeleiteter customerId:', resolvedCustomerId);
-      }
+    console.log('➡️ Webhook gestartet für Ticket', ticke
