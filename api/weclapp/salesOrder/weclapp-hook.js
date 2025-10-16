@@ -53,15 +53,23 @@ async function handler(req, res) {
   }
 
   try {
-    const payload = ensureJsonBody(req);
-    const ticket = payload?.entity?.id ? payload.entity : payload;
+const payload = ensureJsonBody(req);
 
-    console.log('➡️ Webhook gestartet für Ticket', ticket?.id);
+console.log('📬 Incoming payload:', JSON.stringify(payload, null, 2));
 
-    if (!ticket?.id) {
-      console.log('❌ Kein Ticket in Payload – nichts zu tun.');
-      return res.status(200).json({ ok: true, skipped: 'no-ticket' });
-    }
+// Prüfe, ob Struktur evtl. verschachtelt ist
+const ticket =
+  payload?.entity?.id ? payload.entity :
+  payload?.data?.id ? payload.data :
+  payload;
+
+console.log('➡️ Ticket erkannt?', ticket?.id);
+
+if (!ticket?.id) {
+  console.log('❌ Kein Ticket in Payload – nichts zu tun.');
+  return res.status(200).json({ ok: true, skipped: 'no-ticket', raw: payload });
+}
+
 
     // Frisches Ticket holen, um alle Felder sicher zu haben
     const freshTicket = await weclappFetch(`/ticket/id/${ticket.id}`, { method: 'GET' });
