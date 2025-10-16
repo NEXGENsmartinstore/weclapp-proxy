@@ -124,7 +124,13 @@ async function handler(req, res) {
 
     // 5️⃣ Auftrag-ID ins Ticket schreiben (per separatem Aufruf, um Self-Update zu vermeiden)
     try {
-      await fetch(`${process.env.VERCEL_URL || 'https://project-8u32m.vercel.app'}/api/weclapp/salesOrder/update-ticket`, {
+      const baseUrl =
+      process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'https://project-8u32m.vercel.app'; // dein Fallback (manuell)
+    
+        await fetch(`${baseUrl}/api/weclapp/salesOrder/update-ticket`, {
+
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
