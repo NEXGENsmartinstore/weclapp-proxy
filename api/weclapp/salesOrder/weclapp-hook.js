@@ -43,7 +43,7 @@ function ensureJsonBody(req) {
 // -------------------------------
 // Main Handler
 // -------------------------------
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).send('Method not allowed');
   }
