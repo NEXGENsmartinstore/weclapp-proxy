@@ -56,7 +56,7 @@ try {
   const payload = ensureJsonBody(req);
   console.log('📬 Incoming payload:', JSON.stringify(payload, null, 2));
 
-  // Ticket-ID bestimmen
+  // Ticket-ID aus Payload ermitteln
   let ticketId = null;
   if (payload?.entityId) ticketId = payload.entityId;
   else if (payload?.entity?.id) ticketId = payload.entity.id;
@@ -69,87 +69,95 @@ try {
     return res.status(200).json({ ok: true, skipped: 'no-ticket', raw: payload });
   }
 
-  // Ticket vollständig aus Weclapp laden
-const freshTicket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
-const { ticketStatusId, number, title, partyId, contactId } = freshTicket || {};
+  // Ticket aus Weclapp holen
+  const freshTicket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
+  const { ticketStatusId, number, title, partyId, contactId, salesOrderId } = freshTicket || {};
 
-console.log('📦 Ticketdaten:', {
-  ticketId,
-  ticketStatusId,
-  partyId,
-  contactId
-});
-
-// Status prüfen
-if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
-  console.log(`⏭️ Status passt nicht. Erwartet ${TARGET_STATUS_ID}, ist ${ticketStatusId}.`);
-  return res.status(200).json({ ok: true, skipped: 'status-mismatch' });
-}
-
-// Kunde bestimmen
-let resolvedCustomerId = partyId || null;
-
-// Fallback: aus Contact ableiten, falls vorhanden
-if (!resolvedCustomerId && contactId) {
-  console.log(`🔎 Kein partyId vorhanden – hole contact ${contactId} ...`);
-  try {
-    const contact = await weclappFetch(`/contact/id/${contactId}`, { method: 'GET' });
-    resolvedCustomerId = contact.customerId;
-    console.log('🧩 Aus Contact abgeleiteter customerId:', resolvedCustomerId);
-  } catch (e) {
-    console.log('⚠️ Fehler beim Laden des Contacts:', e.message);
-  }
-}
-
-if (!resolvedCustomerId) {
-  console.log('❌ Kein partyId oder customerId gefunden – Auftrag kann nicht angelegt werden.');
-  return res.status(200).json({ ok: true, skipped: 'no-customerId' });
-}
-
-// Auftrag anlegen
-const salesOrderPayload = {
-  customerId: resolvedCustomerId,
-  title: title
-    ? `Auto-Auftrag zu Ticket ${number || ticketId}: ${title}`
-    : `Auto-Auftrag zu Ticket ${number || ticketId}`,
-  currency: 'EUR'
-};
-
-console.log('🧾 SalesOrder Payload:', salesOrderPayload);
-
-const createdOrder = await weclappFetch('/salesOrder', {
-  method: 'POST',
-  body: JSON.stringify(salesOrderPayload)
-});
-
-console.log('✅ Auftrag erstellt:', { id: createdOrder?.id, number: createdOrder?.number });
-
-// Optional: Auftrag-ID im Ticket hinterlegen
-try {
-  await weclappFetch(`/ticket/${ticketId}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      customField1: `SO:${createdOrder.id}`
-    })
+  console.log('📦 Ticketdaten:', {
+    ticketId,
+    ticketStatusId,
+    partyId,
+    contactId,
+    salesOrderId
   });
-  console.log(`🔗 Auftrag-ID im Ticket hinterlegt (customField1 = SO:${createdOrder.id})`);
-} catch (e) {
-  console.log('⚠️ Konnte Auftrag-ID nicht ins Ticket schreiben:', e.message);
+
+  // 1️⃣ Prüfen, ob bereits ein Auftrag verknüpft ist
+  if (salesOrderId) {
+    console.log(`⏭️ Auftrag ${salesOrderId} bereits vorhanden – keine Neuerstellung.`);
+    return res.status(200).json({ ok: true, skipped: 'already-linked', salesOrderId });
+  }
+
+  // 2️⃣ Status prüfen
+  if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
+    console.log(`⏭️ Status passt nicht. Erwartet ${TARGET_STATUS_ID}, ist ${ticketStatusId}.`);
+    return res.status(200).json({ ok: true, skipped: 'status-mismatch' });
+  }
+
+  // 3️⃣ Kunde bestimmen
+  let resolvedCustomerId = partyId || null;
+
+  if (!resolvedCustomerId && contactId) {
+    console.log(`🔎 Kein partyId vorhanden – hole contact ${contactId} ...`);
+    try {
+      const contact = await weclappFetch(`/contact/id/${contactId}`, { method: 'GET' });
+      resolvedCustomerId = contact.customerId;
+      console.log('🧩 Aus Contact abgeleiteter customerId:', resolvedCustomerId);
+    } catch (e) {
+      console.log('⚠️ Fehler beim Laden des Contacts:', e.message);
+    }
+  }
+
+  if (!resolvedCustomerId) {
+    console.log('❌ Kein partyId oder customerId gefunden – Auftrag kann nicht angelegt werden.');
+    return res.status(200).json({ ok: true, skipped: 'no-customerId' });
+  }
+
+  // 4️⃣ Auftrag anlegen
+  const salesOrderPayload = {
+    customerId: resolvedCustomerId,
+    title: title
+      ? `Auto-Auftrag zu Ticket ${number || ticketId}: ${title}`
+      : `Auto-Auftrag zu Ticket ${number || ticketId}`,
+    currency: 'EUR'
+  };
+
+  console.log('🧾 SalesOrder Payload:', salesOrderPayload);
+
+  const createdOrder = await weclappFetch('/salesOrder', {
+    method: 'POST',
+    body: JSON.stringify(salesOrderPayload)
+  });
+
+  console.log('✅ Auftrag erstellt:', { id: createdOrder?.id, number: createdOrder?.number });
+
+  // 5️⃣ Auftrag-ID ins Ticket schreiben (Feld salesOrderId)
+  try {
+    await weclappFetch(`/Ticket/update`, {
+      method: 'POST',
+      body: JSON.stringify({
+        id: ticketId,
+        salesOrderId: createdOrder.id
+      })
+    });
+    console.log(`🔗 Auftrag-ID im Ticket hinterlegt (salesOrderId = ${createdOrder.id})`);
+  } catch (e) {
+    console.log('⚠️ Konnte Auftrag-ID nicht ins Ticket schreiben:', e.message);
+  }
+
+  return res.status(200).json({
+    ok: true,
+    createdSalesOrder: {
+      id: createdOrder?.id,
+      number: createdOrder?.number
+    }
+  });
+
+} catch (err) {
+  console.error('💥 Fehler im Hook:', err);
+  return res.status(500).json({ error: String(err.message || err) });
 }
 
-return res.status(200).json({
-  ok: true,
-  createdSalesOrder: {
-    id: createdOrder?.id,
-    number: createdOrder?.number
-  }
-});
-
-
-  } catch (err) {
-    console.error('💥 Fehler im Hook:', err);
-    return res.status(500).json({ error: String(err.message || err) });
-  }
+  
 }
 
 // -------------------------------
