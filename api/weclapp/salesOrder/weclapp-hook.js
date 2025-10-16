@@ -61,7 +61,7 @@ async function handler(req, res) {
     }
 
     // Ticket aus Weclapp holen
-    const freshTicket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
+    const freshTicket = await weclappFetch(`/helpdeskTicket/id/${ticketId}`, { method: 'GET' });
     const { ticketStatusId, number, title, partyId, contactId, salesOrderId } = freshTicket || {};
 
     console.log('📦 Ticketdaten:', {
@@ -123,7 +123,7 @@ async function handler(req, res) {
 
     // 5️⃣ Auftrag-ID ins Ticket schreiben (Custom-Feld setzen)
     try {
-      await weclappFetch(`/ticket/update`, {
+      await weclappFetch(`/helpdeskTicket/update`, {
         method: 'POST',
         body: JSON.stringify({
           id: ticketId,
