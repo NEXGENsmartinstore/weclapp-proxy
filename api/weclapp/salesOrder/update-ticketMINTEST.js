@@ -1,4 +1,4 @@
-// api/weclapp/salesOrder/update-ticket.js
+// api/weclapp/salesOrder/update-ticketMINTEST.js
 
 const WECLAPP_HOST = process.env.WECLAPP_HOST;
 const WECLAPP_TOKEN = process.env.WECLAPP_TOKEN;
@@ -13,48 +13,43 @@ async function weclappFetch(path, options = {}) {
       ...(options.headers || {})
     }
   });
-
   let data = null;
   try { data = await res.json(); } catch {}
-  if (!res.ok) {
-    const msg = `Weclapp API Error ${res.status} ${res.statusText}: ${JSON.stringify(data)}`;
-    throw new Error(msg);
-  }
+  if (!res.ok) throw new Error(`Weclapp API Error ${res.status} ${res.statusText}: ${JSON.stringify(data)}`);
   return data;
 }
 
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Method not allowed');
 
-  let body = {};
-  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
-  catch (e) { console.error('❌ Body parse error:', e.message); }
-
+  const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
   const { ticketId } = body || {};
   console.log('📥 Eingehender Test-Body:', body);
 
-  if (!ticketId) {
-    console.log('❌ ticketId fehlt!');
-    return res.status(400).json({ error: 'Missing ticketId', body });
-  }
-
-  console.log(`🕓 Starte Test-Update für Ticket ${ticketId}`);
-  await new Promise(r => setTimeout(r, 1000));
+  if (!ticketId) return res.status(400).json({ error: 'Missing ticketId' });
 
   try {
-    const newSubject = `TEST-UPDATE ${Date.now()}`;
-    const payload = { id: ticketId, subject: newSubject };
-    console.log('📤 Sende Update an Weclapp:', JSON.stringify(payload, null, 2));
+    // Schreibe in ein Custom-Feld (z. B. dein Attribut 4234749)
+    const payload = {
+      id: ticketId,
+      customAttributes: [
+        {
+          attributeDefinitionId: "4234749",
+          value: `TEST-${Date.now()}`
+        }
+      ]
+    };
 
-    const result = await weclappFetch(`/helpdeskTicket/update`, {
+    console.log('📤 Sende Update an Weclapp:', payload);
+    const result = await weclappFetch(`/ticket/update`, {
       method: 'POST',
       body: JSON.stringify(payload)
     });
 
-    console.log(`✅ Subject geändert auf: ${newSubject}`);
+    console.log(`✅ Custom-Feld 4234749 aktualisiert für Ticket ${ticketId}`);
     return res.status(200).json({ ok: true, result });
   } catch (err) {
-    console.error(`💥 Fehler im Updater für Ticket ${ticketId}:`, err.message);
+    console.error(`💥 Fehler beim Test-Update:`, err.message);
     return res.status(500).json({ error: err.message });
   }
 }
