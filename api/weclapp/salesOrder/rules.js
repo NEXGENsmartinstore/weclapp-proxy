@@ -26,7 +26,7 @@ function mapTicketToOrderRules(ticket) {
       description: 'Auto-Artikel aus Regel 4234749/4234755'
     });
   }
-
+console.log('[API-RESPONSE]', JSON.stringify(createdOrder, null, 2));
   return { commission, orderItems };
 }
 
