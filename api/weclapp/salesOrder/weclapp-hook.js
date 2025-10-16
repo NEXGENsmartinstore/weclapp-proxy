@@ -70,7 +70,7 @@ try {
   }
 
   // Ticket aus Weclapp holen
-  const freshTicket = await weclappFetch(`/helpdeskTicket/id/${ticketId}`, { method: 'GET' });
+  const freshTicket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
   const { ticketStatusId, number, title, partyId, contactId, salesOrderId } = freshTicket || {};
 
   console.log('📦 Ticketdaten:', {
