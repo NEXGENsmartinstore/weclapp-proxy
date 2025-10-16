@@ -3,7 +3,7 @@ const { mapTicketToOrderRules } = require('./rules');
 
 function buildSalesOrderPayload(ticket, customerId) {
   const { commission, orderItems, plannedDeliveryDate, plannedShippingDate } =
-    mapTicketToOrderRules(ticket);
+    require('./rules').mapTicketToOrderRules(ticket);
 
   const payload = {
     customerId,
@@ -11,14 +11,21 @@ function buildSalesOrderPayload(ticket, customerId) {
     currency: 'EUR',
     commission,
     plannedDeliveryDate,
-    plannedShippingDate
+    plannedShippingDate,
+    relatedEntities: [
+      {
+        entityName: 'ticket',
+        entityId: ticket.id
+      }
+    ]
   };
 
-  if (orderItems && orderItems.length > 0) {
+  if (orderItems?.length) {
     payload.orderItems = orderItems;
   }
 
   return payload;
 }
+
 
 module.exports = { buildSalesOrderPayload };
