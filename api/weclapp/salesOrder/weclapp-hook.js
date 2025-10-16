@@ -131,14 +131,19 @@ try {
   console.log('✅ Auftrag erstellt:', { id: createdOrder?.id, number: createdOrder?.number });
 
   // 5️⃣ Auftrag-ID ins Ticket schreiben (Feld salesOrderId)
-  try {
-    await weclappFetch(`/Ticket/update`, {
-      method: 'POST',
-      body: JSON.stringify({
-        id: ticketId,
-        salesOrderId: createdOrder.id
-      })
-    });
+  await weclappFetch(`/ticket/update`, {
+  method: 'POST',
+  body: JSON.stringify({
+    id: ticketId,
+    customAttributes: [
+      {
+        attributeDefinitionId: "1234567", // ID deines benutzerdefinierten Felds
+        value: createdOrder.id
+      }
+    ]
+  })
+});
+
     console.log(`🔗 Auftrag-ID im Ticket hinterlegt (salesOrderId = ${createdOrder.id})`);
   } catch (e) {
     console.log('⚠️ Konnte Auftrag-ID nicht ins Ticket schreiben:', e.message);
