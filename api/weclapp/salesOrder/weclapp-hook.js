@@ -127,7 +127,7 @@ console.log('✅ Auftrag erstellt:', { id: createdOrder?.id, number: createdOrde
 // Optional: Auftrag-ID im Ticket hinterlegen
 try {
   await weclappFetch(`/ticket/${ticketId}`, {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify({
       customField1: `SO:${createdOrder.id}`
     })
