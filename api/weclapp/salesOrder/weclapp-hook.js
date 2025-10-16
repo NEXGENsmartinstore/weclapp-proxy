@@ -121,25 +121,20 @@ async function handler(req, res) {
 
     console.log('✅ Auftrag erstellt:', { id: createdOrder?.id, number: createdOrder?.number });
 
-    // 5️⃣ Auftrag-ID ins Ticket schreiben (Custom-Feld setzen)
+
+    // 5️⃣ Auftrag-ID ins Ticket schreiben (per separatem Aufruf, um Self-Update zu vermeiden)
     try {
-      await weclappFetch(`/helpdeskTicket/update`, {
+      await fetch(`${process.env.VERCEL_URL || 'https://project-8u32m.vercel.app'}/api/weclapp/salesOrder/update-ticket`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: ticketId,
-          customAttributes: [
-            {
-              attributeDefinitionId: "4234749",
-              selectedValues: [
-                { id: "4234755" } // der Wert, der gesetzt werden soll
-              ]
-            }
-          ]
+          ticketId,
+          createdOrderId: createdOrder.id
         })
       });
-      console.log(`🔗 Custom-Attribut 4234749 → Wert 4234755 im Ticket ${ticketId} gesetzt.`);
+      console.log(`🕓 Auftrag-ID ${createdOrder.id} wird asynchron ins Ticket ${ticketId} eingetragen...`);
     } catch (e) {
-      console.log('⚠️ Konnte Auftrag-ID nicht ins Ticket schreiben:', e.message);
+      console.log('⚠️ Fehler beim Aufruf des Updaters:', e.message);
     }
 
     // Erfolgsmeldung zurückgeben
