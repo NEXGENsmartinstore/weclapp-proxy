@@ -137,10 +137,11 @@ await weclappFetch(`/ticket/update`, {
     ]
   })
 });
-console.log(`🔗 Custom-Attribut 4234749 → Wert 4234755 im Ticket ${ticketId} gesetzt.`); catch (e) {
+console.log(`🔗 Custom-Attribut 4234749 → Wert 4234755 im Ticket ${ticketId} gesetzt.`); 
+    catch (e) {
       console.log('⚠️ Konnte Auftrag-ID nicht ins Ticket schreiben:', e.message);
     }
-
+  }
     return res.status(200).json({
       ok: true,
       createdSalesOrder: {
