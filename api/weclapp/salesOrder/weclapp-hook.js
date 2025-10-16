@@ -1,11 +1,15 @@
 // api/weclapp/salesOrder/weclapp-hook.js
 
+// -------------------------------
 // Konfiguration
-const TARGET_STATUS_ID = process.env.WECLAPP_TARGET_TICKET_STATUS_ID || '5609151'; // dein Status "Einsatz planen"
-const WECLAPP_HOST = process.env.WECLAPP_HOST;   // z.B. https://nexgen.weclapp.com
-const WECLAPP_TOKEN = process.env.WECLAPP_TOKEN; // dein API Token
+// -------------------------------
+const TARGET_STATUS_ID = process.env.WECLAPP_TARGET_TICKET_STATUS_ID || '5609151'; // "Einsatz planen"
+const WECLAPP_HOST = process.env.WECLAPP_HOST;   // z. B. https://nexgen.weclapp.com
+const WECLAPP_TOKEN = process.env.WECLAPP_TOKEN; // API-Token
 
-// kleine Helper
+// -------------------------------
+// Helper für API-Aufrufe
+// -------------------------------
 async function weclappFetch(path, options = {}) {
   const url = `${WECLAPP_HOST.replace(/\/$/, '')}/webapp/api/v1${path}`;
   const res = await fetch(url, {
@@ -16,13 +20,15 @@ async function weclappFetch(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  // weclapp liefert bei Fehlern oft JSON mit details
+
   let data = null;
   try { data = await res.json(); } catch {}
+
   if (!res.ok) {
     const msg = `Weclapp API Error ${res.status} ${res.statusText}: ${JSON.stringify(data)}`;
     throw new Error(msg);
   }
+
   return data;
 }
 
@@ -34,6 +40,9 @@ function ensureJsonBody(req) {
   return {};
 }
 
+// -------------------------------
+// Main Handler
+// -------------------------------
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).send('Method not allowed');
@@ -45,71 +54,42 @@ export default async function handler(req, res) {
 
   try {
     const payload = ensureJsonBody(req);
-
-    // Weclapp Webhook: meistens steckt die Entität direkt drin.
-    // Wir akzeptieren beide Varianten: direktes Ticket oder wrapped {entity: {…}}
     const ticket = payload?.entity?.id ? payload.entity : payload;
 
-    console.log('Webhook payload keys:', Object.keys(payload || {}));
-    console.log('Ticket snapshot:', { id: ticket?.id, ticketStatusId: ticket?.ticketStatusId });
+    console.log('➡️ Webhook gestartet für Ticket', ticket?.id);
 
     if (!ticket?.id) {
-      console.log('Kein Ticket in Payload – nichts zu tun.');
+      console.log('❌ Kein Ticket in Payload – nichts zu tun.');
       return res.status(200).json({ ok: true, skipped: 'no-ticket' });
     }
 
-    // Ticket frisch aus weclapp holen (um sichere Felder wie customerId zu haben)
+    // Frisches Ticket holen, um alle Felder sicher zu haben
     const freshTicket = await weclappFetch(`/ticket/id/${ticket.id}`, { method: 'GET' });
-    console.log('Fresh ticket keys:', Object.keys(freshTicket || {}));
+    const { ticketStatusId, number, title, partyId, contactId } = freshTicket || {};
 
-    const { ticketStatusId, customerId, number, title } = freshTicket || {};
+    console.log('📦 Ticketdaten:', {
+      ticketId: ticket.id,
+      ticketStatusId,
+      partyId,
+      contactId
+    });
 
-    if (!ticketStatusId) {
-      console.log('Ticket hat keine ticketStatusId – abbrechen.');
-      return res.status(200).json({ ok: true, skipped: 'no-status' });
-    }
-
+    // Status prüfen
     if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
-      console.log(`Status passt nicht. Erwartet ${TARGET_STATUS_ID}, ist ${ticketStatusId}.`);
+      console.log(`⏭️ Status passt nicht. Erwartet ${TARGET_STATUS_ID}, ist ${ticketStatusId}.`);
       return res.status(200).json({ ok: true, skipped: 'status-mismatch' });
     }
 
-    if (!customerId) {
-      console.log('Kein customerId am Ticket – Auftrag kann nicht angelegt werden.');
-      return res.status(200).json({ ok: true, skipped: 'no-customerId' });
-    }
+    // -------------------------------
+    // Kunde bestimmen
+    // -------------------------------
+    let resolvedCustomerId = partyId || null;
 
-    // Minimalen Auftrag erstellen – "blanko"
-    const salesOrderPayload = {
-      customerId,
-      title: title ? `Auto-Auftrag zu Ticket ${number || ticket.id}: ${title}` : `Auto-Auftrag zu Ticket ${number || ticket.id}`,
-      currency: 'EUR'
-      // Positions etc. fügen wir später schrittweise hinzu
-    };
-
-    console.log('SalesOrder Payload:', salesOrderPayload);
-
-    const createdOrder = await weclappFetch('/salesOrder', {
-      method: 'POST',
-      body: JSON.stringify(salesOrderPayload)
-    });
-
-    console.log('SalesOrder erstellt:', { id: createdOrder?.id, number: createdOrder?.number });
-
-    // OPTIONAL: ins Ticket zurückschreiben (z.B. in ein freies Feld oder als Kommentar)
-    // -> auskommentiert lassen, bis wir ein Feld vereinbaren
-    // await weclappFetch(`/ticket/${ticket.id}`, {
-    //   method: 'PUT',
-    //   body: JSON.stringify({ customField1: `SO:${createdOrder.id}` })
-    // });
-
-    return res.status(200).json({
-      ok: true,
-      createdSalesOrder: { id: createdOrder?.id, number: createdOrder?.number }
-    });
-
-  } catch (err) {
-    console.error('Fehler im Hook:', err);
-    return res.status(500).json({ error: String(err.message || err) });
-  }
-}
+    // Fallback: aus Contact ableiten, falls vorhanden
+    if (!resolvedCustomerId && contactId) {
+      console.log(`🔎 Kein partyId vorhanden – hole contact ${contactId} ...`);
+      try {
+        const contact = await weclappFetch(`/contact/id/${contactId}`, { method: 'GET' });
+        resolvedCustomerId = contact.customerId;
+        console.log('🧩 Aus Contact abgeleiteter customerId:', resolvedCustomerId);
+      }
