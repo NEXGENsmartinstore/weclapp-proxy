@@ -52,35 +52,34 @@ async function handler(req, res) {
     return res.status(500).json({ error: 'Missing WECLAPP_HOST or WECLAPP_TOKEN' });
   }
 
-  try {
-const payload = ensureJsonBody(req);
+try {
+  const payload = ensureJsonBody(req);
+  console.log('📬 Incoming payload:', JSON.stringify(payload, null, 2));
 
-console.log('📬 Incoming payload:', JSON.stringify(payload, null, 2));
+  // Ticket-ID bestimmen
+  let ticketId = null;
+  if (payload?.entityId) ticketId = payload.entityId;
+  else if (payload?.entity?.id) ticketId = payload.entity.id;
+  else if (payload?.id) ticketId = payload.id;
 
-// Prüfe, ob Struktur evtl. verschachtelt ist
-const ticket =
-  payload?.entity?.id ? payload.entity :
-  payload?.data?.id ? payload.data :
-  payload;
+  console.log('➡️ Ticket erkannt?', ticketId);
 
-console.log('➡️ Ticket erkannt?', ticket?.id);
+  if (!ticketId) {
+    console.log('❌ Kein Ticket in Payload – nichts zu tun.');
+    return res.status(200).json({ ok: true, skipped: 'no-ticket', raw: payload });
+  }
 
-if (!ticket?.id) {
-  console.log('❌ Kein Ticket in Payload – nichts zu tun.');
-  return res.status(200).json({ ok: true, skipped: 'no-ticket', raw: payload });
-}
+  // Ticket vollständig aus Weclapp laden
+  const freshTicket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
+  const { ticketStatusId, number, title, partyId, contactId } = freshTicket || {};
 
+  console.log('📦 Ticketdaten:', {
+    ticketId,
+    ticketStatusId,
+    partyId,
+    contactId
+  });
 
-    // Frisches Ticket holen, um alle Felder sicher zu haben
-    const freshTicket = await weclappFetch(`/ticket/id/${ticket.id}`, { method: 'GET' });
-    const { ticketStatusId, number, title, partyId, contactId } = freshTicket || {};
-
-    console.log('📦 Ticketdaten:', {
-      ticketId: ticket.id,
-      ticketStatusId,
-      partyId,
-      contactId
-    });
 
     // Status prüfen
     if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
