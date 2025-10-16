@@ -2,14 +2,16 @@
 const { mapTicketToOrderRules } = require('./rules');
 
 function buildSalesOrderPayload(ticket, customerId) {
-  const { commission, orderItems, plannedDeliveryDate } = mapTicketToOrderRules(ticket);
+  const { commission, orderItems, plannedDeliveryDate, plannedShippingDate } =
+    mapTicketToOrderRules(ticket);
 
   const payload = {
     customerId,
     title: `Auto-Auftrag zu Ticket ${ticket.ticketNumber || ticket.id}`,
     currency: 'EUR',
     commission,
-    plannedDeliveryDate
+    plannedDeliveryDate,
+    plannedShippingDate
   };
 
   if (orderItems && orderItems.length > 0) {
@@ -20,4 +22,3 @@ function buildSalesOrderPayload(ticket, customerId) {
 }
 
 module.exports = { buildSalesOrderPayload };
-
