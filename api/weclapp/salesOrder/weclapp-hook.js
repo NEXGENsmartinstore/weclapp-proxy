@@ -123,21 +123,21 @@ async function handler(req, res) {
 
     // 5️⃣ Auftrag-ID ins Ticket schreiben (Custom-Feld oder salesOrderId)
     try {
-      await weclappFetch(`/ticket/update`, {
-        method: 'POST',
-        body: JSON.stringify({
-          id: ticketId,
-          customAttributes: [
-            {
-              attributeDefinitionId: "1234567", // ID deines benutzerdefinierten Felds
-              value: createdOrder.id
-            }
-          ]
-        })
-      });
-
-      console.log(`🔗 Auftrag-ID im Ticket hinterlegt (salesOrderId = ${createdOrder.id})`);
-    } catch (e) {
+await weclappFetch(`/ticket/update`, {
+  method: 'POST',
+  body: JSON.stringify({
+    id: ticketId,
+    customAttributes: [
+      {
+        attributeDefinitionId: "4234749",
+        selectedValues: [
+          { id: "4234755" }   // ← der Wert, der gesetzt werden soll
+        ]
+      }
+    ]
+  })
+});
+console.log(`🔗 Custom-Attribut 4234749 → Wert 4234755 im Ticket ${ticketId} gesetzt.`); catch (e) {
       console.log('⚠️ Konnte Auftrag-ID nicht ins Ticket schreiben:', e.message);
     }
 
