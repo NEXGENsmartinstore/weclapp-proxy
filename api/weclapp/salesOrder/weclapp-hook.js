@@ -122,26 +122,31 @@ async function handler(req, res) {
     console.log('✅ Auftrag erstellt:', { id: createdOrder?.id, number: createdOrder?.number });
 
 
-    // 5️⃣ Auftrag-ID ins Ticket schreiben (per separatem Aufruf, um Self-Update zu vermeiden)
+    // 5️⃣ Auftrag-ID ins Ticket schreiben (asynchroner Aufruf mit Delay)
     try {
+      // sichere Basis-URL bestimmen
       const baseUrl =
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'https://project-8u32m.vercel.app'; // dein Fallback (manuell)
+        process.env.VERCEL_URL && !process.env.VERCEL_URL.startsWith('http')
+          ? `https://${process.env.VERCEL_URL}`
+          : (process.env.VERCEL_URL || 'https://project-8u32m.vercel.app');
     
-        await fetch(`${baseUrl}/api/weclapp/salesOrder/update-ticket`, {
-
+      const updaterUrl = `${baseUrl}/api/weclapp/salesOrder/update-ticket`;
+      console.log('🚀 Rufe Updater auf:', updaterUrl);
+    
+      const updaterRes = await fetch(updaterUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticketId,
-          createdOrderId: createdOrder.id
-        })
+        body: JSON.stringify({ ticketId, createdOrderId: createdOrder.id })
       });
+    
+      const updaterText = await updaterRes.text();
+      console.log('📡 Antwort des Updaters:', updaterText);
+    
       console.log(`🕓 Auftrag-ID ${createdOrder.id} wird asynchron ins Ticket ${ticketId} eingetragen...`);
     } catch (e) {
-      console.log('⚠️ Fehler beim Aufruf des Updaters:', e.message);
+      console.error('⚠️ Fehler beim Aufruf des Updaters:', e.message);
     }
+
 
     // Erfolgsmeldung zurückgeben
     return res.status(200).json({
