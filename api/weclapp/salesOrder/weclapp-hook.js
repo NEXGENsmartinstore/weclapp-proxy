@@ -6,6 +6,9 @@ const TARGET_STATUS_ID = process.env.WECLAPP_TARGET_TICKET_STATUS_ID || '5609151
 const WECLAPP_HOST = process.env.WECLAPP_HOST;
 const WECLAPP_TOKEN = process.env.WECLAPP_TOKEN;
 
+// -------------------------------
+// Helper für API-Aufrufe
+// -------------------------------
 async function weclappFetch(path, options = {}) {
   const url = `${WECLAPP_HOST.replace(/\/$/, '')}/webapp/api/v1${path}`;
   const res = await fetch(url, {
@@ -31,6 +34,9 @@ function ensureJsonBody(req) {
   return {};
 }
 
+// -------------------------------
+// Main Handler
+// -------------------------------
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Method not allowed');
   if (!WECLAPP_HOST || !WECLAPP_TOKEN) return res.status(500).json({ error: 'Missing WECLAPP_HOST or WECLAPP_TOKEN' });
@@ -47,7 +53,6 @@ async function handler(req, res) {
 
     const ticket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
     const { ticketStatusId, partyId } = ticket || {};
-
     console.log('📦 Ticketdaten:', { ticketId, ticketStatusId, partyId });
 
     if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
@@ -60,17 +65,38 @@ async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'no-customerId' });
     }
 
-    // 📦 Auftrag vorbereiten (Regeln + Payload)
+    // 📦 Auftrag vorbereiten
     const salesOrderPayload = buildSalesOrderPayload(ticket, partyId);
     console.log('🧾 SalesOrder Payload:', salesOrderPayload);
 
+    // Auftrag anlegen
     const createdOrder = await weclappFetch('/salesOrder', {
       method: 'POST',
       body: JSON.stringify(salesOrderPayload)
     });
-
     console.log('✅ Auftrag erstellt:', createdOrder);
+
+    // 🔁 Artikel hinzufügen (nach erfolgreichem Auftrag)
+    const rules = salesOrderPayload._ruleData;
+    if (rules.orderItems && rules.orderItems.length > 0) {
+      for (const item of rules.orderItems) {
+        console.log(`➕ Füge Artikel ${item.articleId} zu Auftrag ${createdOrder.id} hinzu...`);
+        try {
+          await weclappFetch(`/salesOrder/id/${createdOrder.id}/addItem`, {
+            method: 'POST',
+            body: JSON.stringify({ item })
+          });
+          console.log(`✅ Artikel ${item.articleId} erfolgreich hinzugefügt.`);
+        } catch (e) {
+          console.log('⚠️ Fehler beim Hinzufügen eines Artikels:', e.message);
+        }
+      }
+    } else {
+      console.log('ℹ️ Keine Artikel laut Regel definiert.');
+    }
+
     return res.status(200).json({ ok: true, createdOrder });
+
   } catch (err) {
     console.error('💥 Fehler im Hook:', err);
     return res.status(500).json({ error: String(err.message || err) });
