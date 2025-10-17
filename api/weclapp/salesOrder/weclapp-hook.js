@@ -1,42 +1,4 @@
 
-// TEST_RUN
-const TEST_RUN = process.env.TEST_RUN; // z. B. "123456-987654" → Ticket 123456, Auftrag 987654
-
-// ...
-
-async function handler(req, res) {
-  // ...
-  const payload = ensureJsonBody(req);
-  const ticketId = payload?.entityId || payload?.entity?.id || payload?.id;
-  console.log('📬 Incoming payload:', payload);
-
-  // 🔧 Test-Run-Logik: wenn TEST_RUN gesetzt und TicketId matcht
-  if (TEST_RUN) {
-    const [testTicketId, testOrderId] = TEST_RUN.split('-').map(s => s.trim());
-    if (String(ticketId) === String(testTicketId)) {
-      console.log(`🧪 TEST_RUN aktiv: Ticket ${testTicketId} löst Update auf Auftrag ${testOrderId} aus.`);
-
-      // Dummy-Ticket abrufen (wie sonst auch)
-      const ticket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
-      const salesOrderPayload = buildSalesOrderPayload(ticket, ticket.partyId);
-
-      // Update-Testauftrag in Weclapp
-      const updatedOrder = await weclappFetch(`/salesOrder/id/${testOrderId}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...salesOrderPayload,
-          id: testOrderId,
-          commission: salesOrderPayload.commission + ' (TEST_RUN)',
-        })
-      });
-
-      console.log('✅ TEST_RUN: Auftrag aktualisiert:', updatedOrder);
-      return res.status(200).json({ ok: true, testRun: true, updatedOrder });
-    }
-  }
-
-}
-
 // PRODUKTIV_RUN
 // api/weclapp/salesOrder/weclapp-hook.js
 
@@ -92,6 +54,52 @@ async function handler(req, res) {
 
     console.log('📦 Ticketdaten:', { ticketId, ticketStatusId, partyId, salesOrderId, ticketNumber, subject });
 
+    // 🔧 Test-Run Logik direkt nach dem Ticket-Laden:
+    const TEST_RUN = process.env.TEST_RUN; // z. B. "5905847-5908217"
+    if (TEST_RUN) {
+      const [testTicketId, testOrderId] = TEST_RUN.split('-').map(s => s.trim());
+      if (String(ticketId) === String(testTicketId)) {
+        console.log(`🧪 TEST_RUN aktiv: Ticket ${testTicketId} löst Update auf Auftrag ${testOrderId} aus.`);
+    
+        // Ticketdetails holen
+        const ticket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
+        const payload = buildSalesOrderPayload(ticket, ticket.partyId);
+    
+        // Custom Attributes sicherstellen
+        const requiredCustomAttributes = [
+          { attributeDefinitionId: '40227', selectedValueId: '40228' },
+          { attributeDefinitionId: '198428', selectedValueId: '1517137' }
+        ];
+    
+        // Bestehenden Auftrag laden
+        let existing = {};
+        try { existing = await weclappFetch(`/salesOrder/id/${testOrderId}`, { method: 'GET' }); } catch {}
+        const merged = existing.customAttributes || [];
+    
+        for (const attr of requiredCustomAttributes) {
+          const already = merged.some(a => String(a.attributeDefinitionId) === String(attr.attributeDefinitionId));
+          if (!already) merged.push(attr);
+        }
+    
+        payload.customAttributes = merged;
+    
+        // Auftrag aktualisieren
+        const updated = await weclappFetch(`/salesOrder/id/${testOrderId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            ...payload,
+            id: testOrderId,
+            commission: payload.commission + ' (TEST_RUN)'
+          })
+        });
+    
+        console.log('✅ TEST_RUN Auftrag aktualisiert:', updated);
+        return res.status(200).json({ ok: true, testRun: true, updated });
+      }
+    }
+
+
+    
     // 🛑 Sicherheitsbremse 1: bereits verknüpft
     if (salesOrderId) {
       console.log(`⏹️ Ticket ${ticketId} ist bereits mit Auftrag ${salesOrderId} verknüpft – keine Neuerstellung.`);
