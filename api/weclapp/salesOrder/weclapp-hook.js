@@ -91,6 +91,23 @@ async function handler(req, res) {
     });
     console.log('✅ Auftrag erstellt:', createdOrder);
 
+    // 🔗 Danach: Ticket verknüpfen
+    try {
+      const linkPayload = {
+        salesOrderId: createdOrder.id,
+        taskIdToOrderItemId: {}
+      };
+    
+      const linkResponse = await weclappFetch(`/ticket/id/${ticketId}/linkSalesOrder`, {
+        method: 'POST',
+        body: JSON.stringify(linkPayload)
+      });
+
+  console.log('✅ Ticket erfolgreich verknüpft:', linkResponse);
+} catch (err) {
+  console.log('⚠️ Fehler beim Verknüpfen:', err.message);
+}
+    
     // Artikel hinzufügen
     const rules = salesOrderPayload._ruleData;
     if (rules.orderItems && rules.orderItems.length > 0) {
