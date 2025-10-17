@@ -5,12 +5,18 @@ const { buildSalesOrderPayload } = require('./order-builder');
 const TARGET_STATUS_ID = process.env.WECLAPP_TARGET_TICKET_STATUS_ID || '5609151';
 const WECLAPP_HOST = process.env.WECLAPP_HOST;
 const WECLAPP_TOKEN = process.env.WECLAPP_TOKEN;
+const DRY_RUN = process.env.DRY_RUN === 'true'; // 👈 neu!
 
-// -------------------------------
-// Helper für API-Aufrufe
 // -------------------------------
 async function weclappFetch(path, options = {}) {
   const url = `${WECLAPP_HOST.replace(/\/$/, '')}/webapp/api/v1${path}`;
+
+  if (DRY_RUN && options.method && options.method.toUpperCase() !== 'GET') {
+    console.log(`🧪 [DRY-RUN] ${options.method} ${url}`);
+    if (options.body) console.log('🧾 Body:', options.body);
+    return { dryRun: true, simulatedUrl: url };
+  }
+
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -26,6 +32,7 @@ async function weclappFetch(path, options = {}) {
   return data;
 }
 
+// -------------------------------
 function ensureJsonBody(req) {
   if (typeof req.body === 'string') {
     try { return JSON.parse(req.body); } catch { return {}; }
@@ -34,8 +41,6 @@ function ensureJsonBody(req) {
   return {};
 }
 
-// -------------------------------
-// Main Handler
 // -------------------------------
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Method not allowed');
@@ -69,6 +74,16 @@ async function handler(req, res) {
     const salesOrderPayload = buildSalesOrderPayload(ticket, partyId);
     console.log('🧾 SalesOrder Payload:', salesOrderPayload);
 
+    // Dry-Run → keine Erstellung
+    if (DRY_RUN) {
+      console.log('🧪 [DRY-RUN] Auftrag NICHT erstellt.');
+      return res.status(200).json({
+        ok: true,
+        dryRun: true,
+        wouldCreateOrder: salesOrderPayload
+      });
+    }
+
     // Auftrag anlegen
     const createdOrder = await weclappFetch('/salesOrder', {
       method: 'POST',
@@ -76,7 +91,7 @@ async function handler(req, res) {
     });
     console.log('✅ Auftrag erstellt:', createdOrder);
 
-    // 🔁 Artikel hinzufügen (nach erfolgreichem Auftrag)
+    // Artikel hinzufügen
     const rules = salesOrderPayload._ruleData;
     if (rules.orderItems && rules.orderItems.length > 0) {
       for (const item of rules.orderItems) {
