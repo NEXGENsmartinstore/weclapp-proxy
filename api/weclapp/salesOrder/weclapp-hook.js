@@ -58,13 +58,25 @@ async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'already-linked', salesOrderId });
     }
 
-    // 🛑 Sicherheitsbremse 2: vorhandener Auftrag mit gleicher Kommission
-    const commissionSearch = encodeURIComponent(`TICKET ${ticketNumber}:`);
-    const existingOrders = await weclappFetch(`/salesOrder?commission-like=${commissionSearch}`, { method: 'GET' });
-    if (existingOrders?.result?.length > 0) {
-      console.log(`⏹️ Es existiert bereits ein Auftrag mit Kommission "TICKET ${ticketNumber}:" – keine Neuerstellung.`);
-      return res.status(200).json({ ok: true, skipped: 'commission-match', orders: existingOrders.result.map(o => o.id) });
-    }
+    // 🛑 Sicherheitsbremse 2: vorhandener Auftrag mit gleicher Kommission (lokale Filterung)
+    try {
+    const allOrders = await weclappFetch(`/salesOrder?customerId-eq=${partyId}`, { method: 'GET' });
+    const matchingOrders = (allOrders?.result || []).filter(o =>
+    typeof o.commission === 'string' && o.commission.includes(`TICKET ${ticketNumber}:`)
+    );
+
+  if (matchingOrders.length > 0) {
+    console.log(`⏹️ Auftrag mit Kommission "TICKET ${ticketNumber}:" bereits vorhanden: ${matchingOrders.map(o => o.id).join(', ')}`);
+    return res.status(200).json({
+      ok: true,
+      skipped: 'commission-match',
+      matchingOrders: matchingOrders.map(o => ({ id: o.id, commission: o.commission }))
+    });
+  }
+} catch (err) {
+  console.warn(`⚠️ Kommissions-Check fehlgeschlagen: ${err.message}`);
+}
+
 
     // 🎯 Status prüfen
     if (String(ticketStatusId) !== String(TARGET_STATUS_ID)) {
