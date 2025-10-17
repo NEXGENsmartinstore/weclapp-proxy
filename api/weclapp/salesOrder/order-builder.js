@@ -2,20 +2,37 @@
 
 const { mapTicketToOrderRules } = require('./rules');
 
+/**
+ * Baut das finale Payload-Objekt für POST /salesOrder
+ * basierend auf Ticketdaten und Regellogik.
+ */
 function buildSalesOrderPayload(ticket, customerId) {
-  const { number, title, id } = ticket || {};
-  const rules = mapTicketToOrderRules(ticket);
+  const { ticketNumber, subject, id: ticketId } = ticket || {};
 
-  return {
+  // 🎯 Regel-Engine anwenden (Kommission, Artikel, Lieferdatum, etc.)
+  const ruleData = mapTicketToOrderRules(ticket);
+
+  // 🧱 Grundstruktur des Auftrags
+  const payload = {
     customerId,
-    title: title ? `Auto-Auftrag zu Ticket ${number || id}` : `Auto-Auftrag zu Ticket ${id}`,
+    title: `Auto-Auftrag zu Ticket ${ticketNumber || ticketId}`,
     currency: 'EUR',
-    commission: rules.commission,
-    plannedDeliveryDate: rules.plannedDeliveryDate,
-    plannedShippingDate: rules.plannedShippingDate,
-    relatedEntities: [{ entityName: 'ticket', entityId: id }],
-    _ruleData: rules // interner Transport (damit Hook weiß, welche Artikel folgen)
+    commission: ruleData.commission,
+    plannedDeliveryDate: ruleData.plannedDeliveryDate,
+    plannedShippingDate: ruleData.plannedShippingDate,
+    relatedEntities: [
+      { entityName: 'ticket', entityId: ticketId }
+    ]
   };
+
+  // 🧩 Wenn Artikel vorhanden sind → Payload ergänzen
+  if (ruleData.orderItems && ruleData.orderItems.length > 0) {
+    payload.orderItems = ruleData.orderItems;
+  } else {
+    console.log('ℹ️ Keine Artikel laut Regel definiert.');
+  }
+
+  return payload;
 }
 
 module.exports = { buildSalesOrderPayload };
