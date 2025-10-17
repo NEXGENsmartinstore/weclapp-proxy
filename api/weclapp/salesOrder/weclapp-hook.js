@@ -76,7 +76,7 @@ async function handler(req, res) {
 
     // Dry-Run → keine Erstellung
     if (DRY_RUN) {
-      console.log('🧪 [DRY-RUN] Auftrag NICHT erstellt.');
+      console.log('🧪 [DRY-RUN] Auftrag NICHT erstellt. Vollständiger Payload:', JSON.stringify(salesOrderPayload, null, 2));
       return res.status(200).json({
         ok: true,
         dryRun: true,
