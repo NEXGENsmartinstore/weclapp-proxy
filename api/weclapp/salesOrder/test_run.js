@@ -17,6 +17,7 @@ async function weclappFetch(path, options = {}) {
       ...(options.headers || {})
     }
   });
+
   let data = null;
   try { data = await res.json(); } catch {}
   if (!res.ok) throw new Error(`Weclapp API Error ${res.status} ${res.statusText}: ${JSON.stringify(data)}`);
@@ -51,20 +52,36 @@ async function handler(req, res) {
     const ruleData = mapTicketToOrderRules(fakeTicket);
     const payload = buildSalesOrderPayload(fakeTicket, '100000'); // Dummy-Kunde oder Testkunde
 
-    // 🧱 Fixe Custom Attribute anhängen
-    payload.customAttributes = [
-      {
-        attributeDefinitionId: '40227',
-        selectedValueId: '40228'
-      },
-      {
-        attributeDefinitionId: '198428',
-        selectedValueId: '1517137'
-      }
+    // 🧱 Pflicht-Custom-Attribute
+    const requiredCustomAttributes = [
+      { attributeDefinitionId: '40227', selectedValueId: '40228' },
+      { attributeDefinitionId: '198428', selectedValueId: '1517137' }
     ];
 
+    // 🔄 Bestehende Custom Attributes abrufen (nur bei Update)
+    let existingCustomAttributes = [];
+    if (salesOrderId && updateExisting) {
+      try {
+        const existingOrder = await weclappFetch(`/salesOrder/id/${salesOrderId}`, { method: 'GET' });
+        existingCustomAttributes = existingOrder.customAttributes || [];
+      } catch (e) {
+        console.warn(`⚠️ Bestehender Auftrag konnte nicht geladen werden: ${e.message}`);
+      }
+    }
+
+    // 🧩 Custom Attributes zusammenführen
+    const mergedCustomAttributes = [...existingCustomAttributes];
+    for (const required of requiredCustomAttributes) {
+      const alreadySet = mergedCustomAttributes.some(
+        a => String(a.attributeDefinitionId) === String(required.attributeDefinitionId)
+      );
+      if (!alreadySet) mergedCustomAttributes.push(required);
+    }
+
+    payload.customAttributes = mergedCustomAttributes;
+
     console.log('🧩 RuleData:', ruleData);
-    console.log('🧾 Payload mit CustomAttributes:', payload);
+    console.log('🧾 Payload mit CustomAttributes:', payload.customAttributes);
 
     // 🧪 DryRun → Nur anzeigen
     if (DRY_RUN && !updateExisting) {
