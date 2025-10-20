@@ -1,11 +1,32 @@
 // /api/customers/addresses.js
 export const config = { runtime: 'nodejs' };
 
-export default async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', 'https://smart-instore.eu');
+const ALLOWED_ORIGINS = new Set([
+  'https://smart-instore.eu',
+  'https://www.smart-instore.eu',
+  'https://project-8u32m.vercel.app'
+]);
+
+function applyCors(req, res) {
+  const origin = req.headers.origin || '';
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : 'https://smart-instore.eu';
+
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  const requested = (req.headers['access-control-request-headers'] || '')
+    .split(',')
+    .map(h => h.trim())
+    .filter(Boolean);
+  const headers = new Set(['Content-Type', 'Accept', 'X-Requested-With']);
+  for (const h of requested) headers.add(h);
+  res.setHeader('Access-Control-Allow-Headers', Array.from(headers).join(', '));
+}
+
+export default async function handler(req, res) {
+  applyCors(req, res);
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -36,13 +57,12 @@ export default async function handler(req, res) {
       if (!customerNumber) continue;
       if (!setIds.has(customerNumber)) continue;
 
-out[customerNumber] = {
-  company: r['Firma'] || '',
-  street:  r['Straße'] || r['Strasse'] || '',
-  zip:     r['PLZ'] || '',
-  city:    r['Stadt'] || ''
-};
-
+      out[customerNumber] = {
+        company: r['Firma'] || '',
+        street:  r['Straße'] || r['Strasse'] || '',
+        zip:     r['PLZ'] || '',
+        city:    r['Stadt'] || ''
+      };
     }
 
     return res.status(200).json({ addresses: out });
