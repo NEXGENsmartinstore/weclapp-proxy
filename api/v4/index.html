@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+  <link rel="stylesheet" href="styles_v4.css">
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WeClapp Maps — v4 (Direct API)</title>
+	
+    <script src="auth_v4.js" defer></script>
+    <script src="monitors.js" defer></script>
+	<script src="weclapp_api.js" defer></script>
+    <script src="map_v4.js" defer></script>
+	
+	
+	
+
+
+	<script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js" defer></script>
+
+    <style>
+      html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: #0b1020; color: #e6e8f0; }
+      #map { position: absolute; inset: 0; }
+      .panel { position: absolute; top: 16px; left: 16px; z-index: 2; background: rgba(14, 19, 36, 0.92); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; box-shadow: 0 8px 20px rgba(0,0,0,0.35); backdrop-filter: blur(6px); max-width: 480px; }
+      .panel h3 { margin: 0 0 8px 0; font-size: 14px; letter-spacing: .3px; font-weight: 600; color: #9ab; }
+      .filters { display: grid; grid-template-columns: repeat(2, minmax(200px, 1fr)); gap: 8px 12px; font-size: 13px; }
+      .filters label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+      .dot { width: 14px; height: 14px; border-radius: 999px; border: 2px solid #000; }
+      .footer-note { position: absolute; bottom: 12px; left: 16px; z-index: 2; font-size: 12px; color: #9ab; background: rgba(14, 19, 36, 0.85); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
+      a.clean { color: #0ea5e9; }
+
+      .table-panel { position: absolute; left: 16px; z-index: 2; width: 480px; background: rgba(14, 19, 36, 0.92); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.35); backdrop-filter: blur(6px); display: flex; flex-direction: column; overflow: hidden; }
+      .table-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+      .table-header h3 { margin: 0; font-size: 14px; color: #9ab; }
+      .table-controls { display: flex; gap: 6px; }
+      .table-controls button { background: #1f2746; color: #e6e8f0; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 8px; cursor: pointer; }
+      .table-body { overflow: auto; }
+      .table-body.compact { height: 260px; }
+      .table-body.expanded { height: 520px; }
+      .row { display: grid; grid-template-columns: 1fr 180px 110px; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .row:hover { background: rgba(255,255,255,0.06); }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.35); font-size: 12px; }
+      .badge .dot { width: 10px; height: 10px; border-width: 1px; }
+      .pill { display:inline-flex; align-items:center; gap:6px; padding:2px 6px; border-radius:999px; border:1px solid rgba(255,255,255,0.2); font-size:11px; }
+      .pill.monitor { background:#1f2937; color:#8ee; border-color:#47a; }
+    </style>
+	
+	<script async
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCfrJMHGJnkf4xHRJqbHnCfhaLCJtJ3oBI&map_ids=my-map-v4&libraries=marker&callback=initMap"
+  async
+  defer
+  >
+</script>
+	
+  </head>
+<body>
+  <!-- Karte -->
+  <div id="map"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar collapsed" id="sidebar">
+    <div class="sidebar-header">
+      <span>Filter & Aufträge</span>
+      <div class="sidebar-controls">
+        <button id="toggleBtn" title="Ein-/ausklappen">⮜</button>
+        <button id="expandBtn" title="Ansicht wechseln">⤢</button>
+      </div>
+    </div>
+
+    <!-- Legende -->
+    <div class="sidebar-section">
+      <h3>Vertriebswege</h3>
+      <div id="legend"></div>
+    </div>
+
+    <!-- Tabelle -->
+    <div class="sidebar-section table-section">
+      <h3>Aufträge (API)</h3>
+      <div class="table-body" id="table-body">
+        <div class="empty">Lade Daten …</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toggle-Tab für collapsed -->
+  <div id="sidebar-tab">≡ Filter & Aufträge</div>
+
+  <!-- Fußnote -->
+  <div class="footer-note">
+    v4: Direkter API-Zugriff auf weclapp. Monitor-Erkennung per Artikelnummern-Liste.
+  </div>
+</body>
+
+
+</html>
