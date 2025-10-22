@@ -185,7 +185,10 @@ if (TEST_RUN) {
         body: JSON.stringify(linkPayload)
       });
       console.log('✅ Ticket erfolgreich mit Auftrag verknüpft:', linkResponse);
-    }     // ---------------------------------------------------------------------
+    } catch (linkErr) {
+      console.log('⚠️ Fehler beim Verknüpfen:', linkErr.message);
+    }
+    // ---------------------------------------------------------------------
     // 🧩 PRODUKTIV_RUN: Dienstleistungsplanung (Task + Kalender)
     // ---------------------------------------------------------------------
 
