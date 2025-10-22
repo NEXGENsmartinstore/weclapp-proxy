@@ -188,98 +188,88 @@ if (TEST_RUN) {
     } catch (linkErr) {
       console.log('⚠️ Fehler beim Verknüpfen:', linkErr.message);
     }
-    // ---------------------------------------------------------------------
-    // 🧩 PRODUKTIV_RUN: Dienstleistungsplanung (Task + Kalender)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// 🧩 PRODUKTIV_RUN: Dienstleistungsplanung (Task + Kalender)
+// ---------------------------------------------------------------------
+try {
+  console.log(`🧩 Starte Dienstleistungsplanung für Auftrag ${createdOrder.id} (Status: ${createdOrder.status})...`);
 
-    try {
-      // 💡 Nur wenn Auftrag bestätigt ist (ORDER_CONFIRMATION_PRINTED)
-      console.log(`🧩 Starte Dienstleistungsplanung für Auftrag ${createdOrder.id} (Status: ${createdOrder.status})...`);
-
-
-        // 1️⃣ SERVICE-Position finden
-        const serviceItem = createdOrder.orderItems?.find(
-          i => i.itemType === 'SERVICE' || i.articleId === '4074816'
-        );
-        if (!serviceItem) {
-          console.warn('⚠️ Keine SERVICE-Position gefunden – keine Task erstellt.');
-          return res.status(200).json({ ok: true, createdOrder, skipped: 'no-service-item' });
-        }
-
-        // 2️⃣ Task-Payload aufbauen
-        const taskPayload = {
-          customerId: createdOrder.customerId,
-          orderItemId: serviceItem.id,
-          subject: `MSG SERVICE ${createdOrder.deliveryAddress?.company ?? createdOrder.customer?.name ?? ''} // ${createdOrder.orderNumber}`,
-          taskStatus: 'NOT_STARTED',
-          taskPriority: 'MEDIUM',
-          allowTimeBooking: true,
-          allowOverBooking: true,
-          billableStatus: true,
-          taskVisibilityType: 'ORGANIZATION'
-        };
-
-        // ⏰ Termin aus geplantem Versanddatum (10:00 – 11:30)
-        if (createdOrder.plannedShippingDate) {
-          const base = new Date(createdOrder.plannedShippingDate);
-          const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
-          taskPayload.dateFrom = start.getTime();
-          taskPayload.dateTo = start.getTime() + 90 * 60 * 1000;
-        }
-
-        // 👤 Standard-Techniker (env oder fix)
-        const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
-        taskPayload.assignees = [{ userId: defaultTechUser, plannedEffort: 5400 }];
-
-        // 3️⃣ Task anlegen
-        const task = await weclappFetch('/task?ignoreMissingProperties=true', {
-          method: 'POST',
-          body: JSON.stringify(taskPayload)
-        });
-        console.log('✅ Task erstellt:', task);
-
-        // 4️⃣ Kalendereintrag im Service-Kalender erzeugen
-        try {
-          const eventBody = {
-            calendarId: '4913008', // Service-Kalender
-            allDayEvent: false,
-            privateEvent: false,
-            showAs: 'FREE',
-            subject: task.subject,
-            description: '<p>Automatisch aus Auftrag erstellt</p>',
-            startDate: taskPayload.dateFrom,
-            endDate: taskPayload.dateTo,
-            userId: defaultTechUser
-          };
-
-          const calendarEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
-            method: 'POST',
-            body: JSON.stringify(eventBody)
-          });
-
-          console.log('📅 Kalender-Event erstellt:', calendarEvent);
-
-          // 5️⃣ Task ↔ Kalender-Verknüpfung
-          await weclappFetch(`/task/id/${task.id}?ignoreMissingProperties=true`, {
-            method: 'PUT',
-            body: JSON.stringify({ calendarEventId: calendarEvent.id })
-          });
-          console.log('🔗 Task mit Kalender-Event verknüpft.');
-        } catch (calErr) {
-          console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
-        }
-      }
-    } catch (prodErr) {
-      console.warn('⚠️ PRODUKTIV_RUN Fehler:', prodErr.message);
-    }
-    // ---------------------------------------------------------------------
-
-
-    return res.status(200).json({ ok: true, createdOrder });
-  } catch (err) {
-    console.error('💥 Fehler im Hook:', err);
-    return res.status(500).json({ error: String(err.message || err) });
+  // 1️⃣ SERVICE-Position finden
+  const serviceItem = createdOrder.orderItems?.find(
+    i => i.itemType === 'SERVICE' || i.articleId === '4074816'
+  );
+  if (!serviceItem) {
+    console.warn('⚠️ Keine SERVICE-Position gefunden – keine Task erstellt.');
+    return res.status(200).json({ ok: true, createdOrder, skipped: 'no-service-item' });
   }
-}
 
-module.exports = handler;
+  // 2️⃣ Task-Payload aufbauen
+  const taskPayload = {
+    customerId: createdOrder.customerId,
+    orderItemId: serviceItem.id,
+    subject: `MSG SERVICE ${createdOrder.deliveryAddress?.company ?? createdOrder.customer?.name ?? ''} // ${createdOrder.orderNumber}`,
+    taskStatus: 'NOT_STARTED',
+    taskPriority: 'MEDIUM',
+    allowTimeBooking: true,
+    allowOverBooking: true,
+    billableStatus: true,
+    taskVisibilityType: 'ORGANIZATION'
+  };
+
+  // ⏰ Termin aus geplantem Versanddatum (10:00 – 11:30)
+  if (createdOrder.plannedShippingDate) {
+    const base = new Date(createdOrder.plannedShippingDate);
+    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
+    taskPayload.dateFrom = start.getTime();
+    taskPayload.dateTo = start.getTime() + 90 * 60 * 1000;
+  }
+
+  // 👤 Standard-Techniker (env oder fix)
+  const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
+  taskPayload.assignees = [{ userId: defaultTechUser, plannedEffort: 5400 }];
+
+  // 3️⃣ Task anlegen
+  const task = await weclappFetch('/task?ignoreMissingProperties=true', {
+    method: 'POST',
+    body: JSON.stringify(taskPayload)
+  });
+  console.log('✅ Task erstellt:', task);
+
+  // 4️⃣ Nur Kalender, wenn Auftrag bestätigt ist
+  if (createdOrder.status === 'ORDER_CONFIRMATION_PRINTED') {
+    try {
+      const eventBody = {
+        calendarId: '4913008', // Service-Kalender
+        allDayEvent: false,
+        privateEvent: false,
+        showAs: 'FREE',
+        subject: task.subject,
+        description: '<p>Automatisch aus Auftrag erstellt</p>',
+        startDate: taskPayload.dateFrom,
+        endDate: taskPayload.dateTo,
+        userId: defaultTechUser
+      };
+
+      const calendarEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
+        method: 'POST',
+        body: JSON.stringify(eventBody)
+      });
+
+      console.log('📅 Kalender-Event erstellt:', calendarEvent);
+
+      await weclappFetch(`/task/id/${task.id}?ignoreMissingProperties=true`, {
+        method: 'PUT',
+        body: JSON.stringify({ calendarEventId: calendarEvent.id })
+      });
+
+      console.log('🔗 Task mit Kalender-Event verknüpft.');
+    } catch (calErr) {
+      console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
+    }
+  } else {
+    console.log(`ℹ️ Auftrag ${createdOrder.id} noch nicht bestätigt – Kalender wird vorerst nicht angelegt.`);
+  }
+} catch (prodErr) {
+  console.warn('⚠️ PRODUKTIV_RUN Fehler:', prodErr.message);
+}
+// ---------------------------------------------------------------------
