@@ -194,10 +194,8 @@ if (TEST_RUN) {
 
     try {
       // 💡 Nur wenn Auftrag bestätigt ist (ORDER_CONFIRMATION_PRINTED)
-      if (createdOrder.status !== 'ORDER_CONFIRMATION_PRINTED') {
-        console.log(`⏭️ Auftrag ${createdOrder.id} noch nicht bestätigt (Status: ${createdOrder.status}) – Task wird übersprungen.`);
-      } else {
-        console.log('🧩 Auftrag ist bestätigt – starte Dienstleistungsplanung.');
+      console.log(`🧩 Starte Dienstleistungsplanung für Auftrag ${createdOrder.id} (Status: ${createdOrder.status})...`);
+
 
         // 1️⃣ SERVICE-Position finden
         const serviceItem = createdOrder.orderItems?.find(
