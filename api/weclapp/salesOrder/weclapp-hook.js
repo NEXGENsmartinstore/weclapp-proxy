@@ -227,6 +227,7 @@ try {
   // 👤 Standard-Techniker (env oder fix)
   const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
   taskPayload.assignees = [{ userId: defaultTechUser, plannedEffort: 5400 }];
+  taskPayload.plannedEffort = 5400; // ✅ erforderlich laut Weclapp-Validierung
 
   // 3️⃣ Task anlegen
   const task = await weclappFetch('/task?ignoreMissingProperties=true', {
