@@ -71,19 +71,6 @@ if (TEST_RUN) {
       const existingOrder = await weclappFetch(`/salesOrder/id/${testOrderId}`, { method: 'GET' });
       const mergedCustomAttributes = existingOrder.customAttributes || [];
 
-      // Fehlt ein Pflichtattribut? → ergänzen
-      for (const attr of requiredCustomAttributes) {
-        const already = mergedCustomAttributes.some(
-          a => String(a.attributeDefinitionId) === String(attr.attributeDefinitionId)
-        );
-        if (!already) {
-          mergedCustomAttributes.push(attr);
-          console.log(`➕ CustomAttribute ergänzt: ${attr.attributeDefinitionId}`);
-        } else {
-          console.log(`⏭️ CustomAttribute ${attr.attributeDefinitionId} war schon vorhanden`);
-        }
-      }
-
       // 💾 Merge: bestehender Auftrag + neue Werte
       const mergedOrder = {
         ...existingOrder,                 // alle Pflichtfelder behalten
