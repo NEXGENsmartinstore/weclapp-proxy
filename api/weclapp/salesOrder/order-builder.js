@@ -32,6 +32,12 @@ function buildSalesOrderPayload(ticket, customerId) {
     console.log('ℹ️ Keine Artikel laut Regel definiert.');
   }
 
+  // 💡 Pflicht-Custom-Attribute immer anhängen
+  payload.customAttributes = [
+    { attributeDefinitionId: '40227', selectedValueId: '40228' },
+    { attributeDefinitionId: '198428', selectedValueId: '1517137' }
+  ];
+
   return payload;
 }
 
