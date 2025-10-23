@@ -1,5 +1,4 @@
 
-// PRODUKTIV_RUN
 // api/weclapp/salesOrder/weclapp-hook.js
 
 const { buildSalesOrderPayload } = require('./order-builder');
@@ -55,6 +54,7 @@ async function handler(req, res) {
     console.log('📦 Ticketdaten:', { ticketId, ticketStatusId, partyId, salesOrderId, ticketNumber, subject });
 
 // 🔧 TEST_RUN-Logik: Ticket-Status löst gezielten Update-Test aus
+    
 const TEST_RUN = process.env.TEST_RUN; // z. B. "5905847-5908217"
 if (TEST_RUN) {
   const [testTicketId, testOrderId] = TEST_RUN.split('-').map(s => s.trim());
@@ -183,7 +183,7 @@ if (TEST_RUN) {
       console.log('⚠️ Fehler beim Verknüpfen:', linkErr.message);
     }
 // ---------------------------------------------------------------------
-// 🧩 PRODUKTIV_RUN: Dienstleistungsplanung (Task + Kalender)
+// 🧩 PRODUKTIV_RUN (Task-Handling + Kalenderintegration mit TEST_RUN)
 // ---------------------------------------------------------------------
 try {
   console.log(`🧩 Starte Dienstleistungsplanung für Auftrag ${createdOrder.id} (Status: ${createdOrder.status})...`);
@@ -192,77 +192,114 @@ try {
   const serviceItem = createdOrder.orderItems?.find(
     i => i.itemType === 'SERVICE' || i.articleId === '4074816'
   );
+
   if (!serviceItem) {
     console.warn('⚠️ Keine SERVICE-Position gefunden – keine Task erstellt.');
     return res.status(200).json({ ok: true, createdOrder, skipped: 'no-service-item' });
   }
 
-  // 2️⃣ Task-Payload aufbauen
+  // 2️⃣ Prüfen, ob bereits Task für dieses orderItemId existiert
+  const taskCheck = await weclappFetch(`/task?filter=orderItemId="${serviceItem.id}"`, { method: 'GET' });
+  const existingTask = (taskCheck.result && taskCheck.result.length > 0) ? taskCheck.result[0] : null;
+
+  // 👤 Standard-Techniker
+  const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
+
+  // 3️⃣ Task-Payload aufbauen
+  const taskSubject = `TBD SERVICE ${createdOrder.deliveryAddress?.company ?? createdOrder.customer?.name ?? ''} // ${createdOrder.orderNumber}`;
   const taskPayload = {
     customerId: createdOrder.customerId,
     orderItemId: serviceItem.id,
-    subject: `MSG SERVICE ${createdOrder.deliveryAddress?.company ?? createdOrder.customer?.name ?? ''} // ${createdOrder.orderNumber}`,
+    subject: taskSubject,
     taskStatus: 'NOT_STARTED',
     taskPriority: 'MEDIUM',
     allowTimeBooking: true,
     allowOverBooking: true,
     billableStatus: true,
-    taskVisibilityType: 'ORGANIZATION'
+    taskVisibilityType: 'ORGANIZATION',
+    assignees: [{ userId: defaultTechUser, plannedEffort: 5400 }],
+    plannedEffort: 5400
   };
 
-  // ⏰ Termin aus geplantem Versanddatum (10:00 – 11:30)
-  if (createdOrder.plannedShippingDate) {
-    const base = new Date(createdOrder.plannedShippingDate);
+  // ⏰ Termin aus geplantem Lieferdatum (immer 10–12 Uhr)
+  if (createdOrder.plannedDeliveryDate) {
+    const base = new Date(createdOrder.plannedDeliveryDate);
     const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
+    const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0);
     taskPayload.dateFrom = start.getTime();
-    taskPayload.dateTo = start.getTime() + 90 * 60 * 1000;
+    taskPayload.dateTo = end.getTime();
   }
 
-  // 👤 Standard-Techniker (env oder fix)
-  const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
-  taskPayload.assignees = [{ userId: defaultTechUser, plannedEffort: 5400 }];
-  taskPayload.plannedEffort = 5400; // ✅ erforderlich laut Weclapp-Validierung
+  // 4️⃣ TEST_RUN-Option
+  const TEST_RUN = process.env.TEST_RUN === 'true';
+  if (TEST_RUN) {
+    console.log('🧪 TEST_RUN aktiv – Task/Kalender werden NICHT wirklich erstellt.');
+    return res.status(200).json({
+      ok: true,
+      testRun: true,
+      createdOrder,
+      simulatedTask: taskPayload
+    });
+  }
 
-  // 3️⃣ Task anlegen
-  const task = await weclappFetch('/task?ignoreMissingProperties=true', {
-    method: 'POST',
-    body: JSON.stringify(taskPayload)
-  });
-  console.log('✅ Task erstellt:', task);
-
-  // 4️⃣ Nur Kalender, wenn Auftrag bestätigt ist
-  if (createdOrder.status === 'ORDER_CONFIRMATION_PRINTED') {
-    try {
-      const eventBody = {
-        calendarId: '4913008', // Service-Kalender
-        allDayEvent: false,
-        privateEvent: false,
-        showAs: 'FREE',
-        subject: task.subject,
-        description: '<p>Automatisch aus Auftrag erstellt</p>',
-        startDate: taskPayload.dateFrom,
-        endDate: taskPayload.dateTo,
-        userId: defaultTechUser
-      };
-
-      const calendarEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
-        method: 'POST',
-        body: JSON.stringify(eventBody)
-      });
-
-      console.log('📅 Kalender-Event erstellt:', calendarEvent);
-
-      await weclappFetch(`/task/id/${task.id}?ignoreMissingProperties=true`, {
-        method: 'PUT',
-        body: JSON.stringify({ calendarEventId: calendarEvent.id })
-      });
-
-      console.log('🔗 Task mit Kalender-Event verknüpft.');
-    } catch (calErr) {
-      console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
-    }
+  // 5️⃣ Task anlegen oder überschreiben
+  let taskResult;
+  if (existingTask) {
+    console.log(`♻️ Überschreibe bestehenden Task ${existingTask.id}...`);
+    taskResult = await weclappFetch(`/task/id/${existingTask.id}?ignoreMissingProperties=true`, {
+      method: 'PUT',
+      body: JSON.stringify(taskPayload)
+    });
   } else {
-    console.log(`ℹ️ Auftrag ${createdOrder.id} noch nicht bestätigt – Kalender wird vorerst nicht angelegt.`);
+    console.log('➕ Kein bestehender Task – neuer wird erstellt...');
+    taskResult = await weclappFetch('/task?ignoreMissingProperties=true', {
+      method: 'POST',
+      body: JSON.stringify(taskPayload)
+    });
+  }
+
+  console.log('✅ Task verarbeitet:', taskResult);
+
+  // 6️⃣ Kalenderintegration (Servicekalender)
+  try {
+    const calendarId = '5913810'; // fester globaler Service-Kalender
+    const calendarPayload = {
+      calendarId,
+      subject: taskSubject,
+      description: `<p>Serviceeinsatz zu Auftrag ${createdOrder.orderNumber}</p>`,
+      startDate: taskPayload.dateFrom,
+      endDate: taskPayload.dateTo,
+      allDayEvent: false,
+      privateEvent: false,
+      showAs: 'BUSY',
+      attendees: [{ userId: defaultTechUser }],
+      relatedEntities: [
+        { entityName: 'salesOrder', entityId: createdOrder.id },
+        { entityName: 'task', entityId: taskResult.id }
+      ]
+    };
+
+    // Prüfen, ob Event schon existiert
+    const eventCheck = await weclappFetch(`/calendarEvent?filter=taskId="${taskResult.id}"`, { method: 'GET' });
+    const existingEvent = eventCheck.result?.[0];
+
+    if (existingEvent) {
+      console.log(`♻️ Aktualisiere Kalender-Event ${existingEvent.id}`);
+      await weclappFetch(`/calendarEvent/id/${existingEvent.id}?ignoreMissingProperties=true`, {
+        method: 'PUT',
+        body: JSON.stringify(calendarPayload)
+      });
+    } else {
+      console.log(`📅 Erstelle neuen Kalender-Event für Task ${taskResult.id}`);
+      await weclappFetch(`/calendarEvent?ignoreMissingProperties=true`, {
+        method: 'POST',
+        body: JSON.stringify(calendarPayload)
+      });
+    }
+
+    console.log('✅ Kalenderintegration abgeschlossen.');
+  } catch (calErr) {
+    console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
   }
 } catch (prodErr) {
   console.warn('⚠️ PRODUKTIV_RUN Fehler:', prodErr.message);
