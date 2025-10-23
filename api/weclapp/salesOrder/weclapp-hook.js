@@ -54,7 +54,6 @@ async function handler(req, res) {
     console.log('📦 Ticketdaten:', { ticketId, ticketStatusId, partyId, salesOrderId, ticketNumber, subject });
 
 // 🔧 TEST_RUN-Logik: Ticket-Status löst gezielten Update-Test aus
-    
 const TEST_RUN = process.env.TEST_RUN; // z. B. "5905847-5908217"
 if (TEST_RUN) {
   const [testTicketId, testOrderId] = TEST_RUN.split('-').map(s => s.trim());
@@ -73,31 +72,63 @@ if (TEST_RUN) {
 
       // 💾 Merge: bestehender Auftrag + neue Werte
       const mergedOrder = {
-        ...existingOrder,                 // alle Pflichtfelder behalten
-        ...salesOrderPayload,             // unsere Regelwerte drüberlegen
+        ...existingOrder,
+        ...salesOrderPayload,
         id: testOrderId,
         customAttributes: mergedCustomAttributes,
         commission: (salesOrderPayload.commission || existingOrder.commission) + ' (TEST_RUN)',
       };
 
-      // 🚀 Auftrag PUTten (vollständiger Datensatz)
-      const updatedOrder = await weclappFetch(`/salesOrder/id/${testOrderId}`, {
-        method: 'PUT',
-        body: JSON.stringify(mergedOrder)
-      });
+      // 🧱 Simulierten Task auf Basis der Regeln erzeugen
+      const ruleData = require('./rules').mapTicketToOrderRules(ticket);
+      const serviceItem = ruleData.orderItems?.find(
+        i => i.articleType === 'SERVICE' || i.articleId === '4074816'
+      );
+      const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
+      const taskSubject = `TBD SERVICE ${existingOrder.deliveryAddress?.company ?? existingOrder.customer?.name ?? ''} // ${existingOrder.orderNumber}`;
+      let dateFrom = null, dateTo = null;
+      if (existingOrder.plannedDeliveryDate) {
+        const base = new Date(existingOrder.plannedDeliveryDate);
+        const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
+        const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0);
+        dateFrom = start.getTime();
+        dateTo = end.getTime();
+      }
 
-      console.log('✅ TEST_RUN: Auftrag erfolgreich aktualisiert.');
+      const simulatedTaskPayload = {
+        customerId: existingOrder.customerId,
+        orderItemId: serviceItem?.id ?? '(keine SERVICE-Position)',
+        subject: taskSubject,
+        taskStatus: 'NOT_STARTED',
+        taskPriority: 'MEDIUM',
+        allowTimeBooking: true,
+        allowOverBooking: true,
+        billableStatus: true,
+        taskVisibilityType: 'ORGANIZATION',
+        assignees: [{ userId: defaultTechUser, plannedEffort: 5400 }],
+        plannedEffort: 5400,
+        dateFrom,
+        dateTo,
+      };
+
+      console.log('🧾 TEST_RUN → Order-Payload:', JSON.stringify(salesOrderPayload, null, 2));
+      console.log('🧱 TEST_RUN → Simulierter Task:', JSON.stringify(simulatedTaskPayload, null, 2));
+
       return res.status(200).json({
         ok: true,
         testRun: true,
-        updatedOrder
+        updatedOrder: mergedOrder,
+        simulatedTask: simulatedTaskPayload,
       });
     } catch (testErr) {
       console.error('💥 TEST_RUN Fehler:', testErr);
-      return res.status(500).json({ error: `TEST_RUN failed: ${String(testErr.message || testErr)}` });
+      return res
+        .status(500)
+        .json({ error: `TEST_RUN failed: ${String(testErr.message || testErr)}` });
     }
   }
 }
+
 
     
     // 🛑 Sicherheitsbremse 1: bereits verknüpft
