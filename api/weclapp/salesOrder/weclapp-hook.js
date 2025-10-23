@@ -67,12 +67,6 @@ if (TEST_RUN) {
       const ticket = await weclappFetch(`/ticket/id/${ticketId}`, { method: 'GET' });
       const salesOrderPayload = buildSalesOrderPayload(ticket, ticket.partyId);
 
-      // 🧱 Pflicht-Custom-Attribute definieren
-      const requiredCustomAttributes = [
-        { attributeDefinitionId: '40227', selectedValueId: '40228' },
-        { attributeDefinitionId: '198428', selectedValueId: '1517137' }
-      ];
-
       // 📦 Bestehenden Auftrag laden
       const existingOrder = await weclappFetch(`/salesOrder/id/${testOrderId}`, { method: 'GET' });
       const mergedCustomAttributes = existingOrder.customAttributes || [];
