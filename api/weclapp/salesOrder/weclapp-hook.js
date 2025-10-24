@@ -278,123 +278,113 @@ try {
 
   console.log('✅ Task verarbeitet:', taskResult);
 
-// 6️⃣ Kalenderintegration (Servicekalender)
+// 6️⃣ Kalenderintegration (Servicekalender – v3.1 only-update)
 try {
   const calendarId = '4913008'; // globaler Service-Kalender
 
-  // Hilfsfunktion: Samstag/Sonntag -> Montag
+  // 🔹 Hilfsfunktion: Samstag/Sonntag -> Montag
   function normalizeToWeekday(date) {
-    const day = date.getDay(); // 0=So, 6=Sa
-    if (day === 6) date.setDate(date.getDate() + 2); // Samstag → Montag
-    else if (day === 0) date.setDate(date.getDate() + 1); // Sonntag → Montag
-    return date;
+    const d = new Date(date);
+    const day = d.getDay(); // 0=So, 6=Sa
+    if (day === 6) d.setDate(d.getDate() + 2); // Samstag → Montag
+    else if (day === 0) d.setDate(d.getDate() + 1); // Sonntag → Montag
+    return d;
   }
 
-  // Datum vorbereiten (Lieferdatum auf Mo–Fr korrigieren)
+  // 🔹 Lieferdatum normalisieren & Uhrzeit setzen
   let base = new Date(createdOrder.plannedDeliveryDate);
   base = normalizeToWeekday(base);
   const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
-  const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0);
+  const end   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0);
 
-  // 📋 Aktuelle Taskdetails abrufen
-  let taskDetails = await weclappFetch(`/task/id/${taskResult.id}`, { method: 'GET' });
+  // 🔹 aktuellen Task prüfen
+  const taskDetails = await weclappFetch(`/task/id/${taskResult.id}`, { method: 'GET' });
 
   // ---------------------------------------------------------------------
-  // 🧠 Schritt 1: Prüfen, ob Task schon einen Kalenderbezug hat
+  // 🧠 1️⃣ Fall: Task hat bereits calendarEventId → Event nur aktualisieren
   // ---------------------------------------------------------------------
   if (taskDetails.calendarEventId) {
-    console.log(`ℹ️ Task ${taskResult.id} hat bereits calendarEventId ${taskDetails.calendarEventId} – aktualisiere nur Betreff.`);
+    const eventId = taskDetails.calendarEventId;
+    console.log(`ℹ️ Task ${taskResult.id} hat calendarEventId ${eventId} – aktualisiere bestehenden Eintrag.`);
 
-    const existingEvent = await weclappFetch(`/calendarEvent/id/${taskDetails.calendarEventId}`, { method: 'GET' });
+    const existingEvent = await weclappFetch(`/calendarEvent/id/${eventId}`, { method: 'GET' });
+
     const updatedEvent = {
-      ...existingEvent,
+      id: existingEvent.id,
+      version: existingEvent.version,
       subject: taskSubject,
       calendarId,
       startDate: start.getTime(),
       endDate: end.getTime()
     };
 
-    await weclappFetch(`/calendarEvent/id/${taskDetails.calendarEventId}?ignoreMissingProperties=true`, {
+    await weclappFetch(`/calendarEvent/id/${eventId}?ignoreMissingProperties=true`, {
       method: 'PUT',
       body: JSON.stringify(updatedEvent)
     });
 
-    console.log('✅ Bestehenden Kalender-Event aktualisiert.');
-  } else {
-    // ---------------------------------------------------------------------
-    // 🧠 Schritt 2: Prüfen, ob bereits ein passender Event im Kalender existiert
-    // ---------------------------------------------------------------------
-    const searchQuery = encodeURIComponent(`subject~"${createdOrder.orderNumber}"`);
-    const existingEvents = await weclappFetch(`/calendarEvent?maxResults=50&sort=-createdDate`, { method: 'GET' });
-    const foundEvent = (existingEvents.result || []).find(ev =>
+    console.log(`✅ Kalender-Event ${eventId} erfolgreich aktualisiert.`);
+  }
+
+  // ---------------------------------------------------------------------
+  // 🧠 2️⃣ Fall: Kein calendarEventId → vorhandenen Event suchen & zuordnen
+  // ---------------------------------------------------------------------
+  else {
+    console.log(`🔍 Kein calendarEventId für Task ${taskResult.id} – suche passenden Eintrag im Kalender...`);
+
+    const events = await weclappFetch(`/calendarEvent?maxResults=100&sort=-createdDate`, { method: 'GET' });
+    const match = (events.result || []).find(ev =>
       ev.subject?.includes(createdOrder.orderNumber) ||
       ev.subject?.includes(createdOrder.customer?.name || '')
     );
 
-    if (foundEvent) {
-      console.log(`🔗 Bereits vorhandener Event gefunden (${foundEvent.id}) – verknüpfe Task (mit Version).`);
-    
-      // 1) Aktuelle Task-Version holen
+    if (match) {
+      console.log(`🔗 Bestehender Kalender-Event gefunden (${match.id}) – verknüpfe Task.`);
+
+      // aktuelle Task-Version holen
       const latestTask = await weclappFetch(`/task/id/${taskResult.id}`, { method: 'GET' });
-    
-      // 2) Mit id + version + calendarEventId updaten
+
+      // Task mit calendarEventId updaten
       const updateBody = {
         id: latestTask.id,
         version: latestTask.version,
-        calendarEventId: foundEvent.id
+        calendarEventId: match.id
       };
-    
-      const updatedTask = await weclappFetch(`/task/id/${latestTask.id}?ignoreMissingProperties=true`, {
+
+      await weclappFetch(`/task/id/${latestTask.id}?ignoreMissingProperties=true`, {
         method: 'PUT',
         body: JSON.stringify(updateBody)
       });
-    
-      // 3) Verifizieren & loggen
-      const verifyTask = await weclappFetch(`/task/id/${latestTask.id}`, { method: 'GET' });
-      console.log('✅ Task-Update (Kalender-Verknüpfung) geprüft:', {
-        taskId: verifyTask.id,
-        calendarEventId: verifyTask.calendarEventId
-      });
-    } else {
-      // ---------------------------------------------------------------------
-      // 🧠 Schritt 3: Wirklich kein Event vorhanden → neuen anlegen
-      // ---------------------------------------------------------------------
-      console.log(`📅 Kein vorhandener Event gefunden → erstelle neuen für Task ${taskResult.id}`);
 
-      const calendarPayload = {
-        calendarId,
+      console.log(`✅ Task ${latestTask.id} erfolgreich mit Event ${match.id} verknüpft.`);
+
+      // Event anschließend aktualisieren (Betreff + Zeitfenster)
+      const updatedEvent = {
+        id: match.id,
+        version: match.version,
         subject: taskSubject,
+        calendarId,
         startDate: start.getTime(),
-        endDate: end.getTime(),
-        allDayEvent: false,
-        privateEvent: false,
-        showAs: 'BUSY',
-        userId: defaultTechUser
+        endDate: end.getTime()
       };
 
-      const newEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
-        method: 'POST',
-        body: JSON.stringify(calendarPayload)
-      });
-
-      console.log('✅ Neuer Kalender-Event erstellt:', newEvent);
-
-      // 🔗 Task mit neuem Kalender-Event verknüpfen
-      await weclappFetch(`/task/id/${taskResult.id}?ignoreMissingProperties=true`, {
+      await weclappFetch(`/calendarEvent/id/${match.id}?ignoreMissingProperties=true`, {
         method: 'PUT',
-        body: JSON.stringify({ calendarEventId: newEvent.id })
+        body: JSON.stringify(updatedEvent)
       });
 
-      console.log('🔗 Task mit neuem Kalender-Event verknüpft.');
+      console.log(`✅ Kalender-Event ${match.id} aktualisiert.`);
+    } else {
+      console.log('⚠️ Kein passender Kalender-Event gefunden – Weclapp-Automatik bleibt zuständig.');
     }
   }
 
 } catch (calErr) {
-  console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
+  console.warn('⚠️ Fehler beim Kalender-Update:', calErr.message);
 }
 
+console.log('✅ Kalenderintegration abgeschlossen.');
 
-  console.log('✅ Kalenderintegration abgeschlossen.');
 
 } catch (prodErr) {
   console.warn('⚠️ PRODUKTIV_RUN Fehler:', prodErr.message);
