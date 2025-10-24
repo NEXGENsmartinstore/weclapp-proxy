@@ -326,12 +326,7 @@ try {
 } catch (calErr) {
   console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
 }
-
-
   console.log('✅ Kalenderintegration abgeschlossen.');
-} catch (calErr) {
-  console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
-}
 
 } catch (prodErr) {
   console.warn('⚠️ PRODUKTIV_RUN Fehler:', prodErr.message);
