@@ -332,10 +332,28 @@ try {
     );
 
     if (foundEvent) {
-      console.log(`🔗 Bereits vorhandener Event gefunden (${foundEvent.id}) – verknüpfe Task.`);
-      await weclappFetch(`/task/id/${taskResult.id}?ignoreMissingProperties=true`, {
+      console.log(`🔗 Bereits vorhandener Event gefunden (${foundEvent.id}) – verknüpfe Task (mit Version).`);
+    
+      // 1) Aktuelle Task-Version holen
+      const latestTask = await weclappFetch(`/task/id/${taskResult.id}`, { method: 'GET' });
+    
+      // 2) Mit id + version + calendarEventId updaten
+      const updateBody = {
+        id: latestTask.id,
+        version: latestTask.version,
+        calendarEventId: foundEvent.id
+      };
+    
+      const updatedTask = await weclappFetch(`/task/id/${latestTask.id}?ignoreMissingProperties=true`, {
         method: 'PUT',
-        body: JSON.stringify({ calendarEventId: foundEvent.id })
+        body: JSON.stringify(updateBody)
+      });
+    
+      // 3) Verifizieren & loggen
+      const verifyTask = await weclappFetch(`/task/id/${latestTask.id}`, { method: 'GET' });
+      console.log('✅ Task-Update (Kalender-Verknüpfung) geprüft:', {
+        taskId: verifyTask.id,
+        calendarEventId: verifyTask.calendarEventId
       });
     } else {
       // ---------------------------------------------------------------------
