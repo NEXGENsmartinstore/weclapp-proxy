@@ -282,19 +282,22 @@ try {
 try {
   console.log('🗓️ Starte hierarchische Kalenderintegration ...');
 
-  const calendarId = '4913008';      // Service-Kalender
-  const mailAccountId = '4912983';   // Outlook-Mailkonto des Servicekalenders
-  const ownerId = '41906';           // Benutzer-ID des Servicekalender-Owners
+  const calendarId = '4913008';
+  const mailAccountId = '4912983';
+  const ownerId = '41906';
   const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
 
-  // 🧩 SERVICE-Position im Auftrag suchen
+  // 🧩 SERVICE-Position suchen
   const serviceItem = createdOrder.orderItems?.find(
     i => i.itemType === 'SERVICE' || i.articleId === '4074816'
   );
   if (!serviceItem) throw new Error('Keine SERVICE-Position im Auftrag gefunden.');
 
-  // 🧩 SalesOrderItem-Details laden → Task finden
-  const orderItemDetail = await weclappFetch(`/salesOrderItem/id/${serviceItem.id}`, { method: 'GET' });
+  // 🧩 OrderItem-Details korrekt abrufen (endpoint ist /orderItem)
+  const orderItemDetail = await weclappFetch(`/orderItem/id/${serviceItem.id}`, { method: 'GET' });
+  if (!orderItemDetail) throw new Error(`OrderItem ${serviceItem.id} nicht gefunden.`);
+
+  // 🧩 Task aus OrderItem ziehen
   const taskId = orderItemDetail.tasks?.[0]?.id;
   if (!taskId) throw new Error(`Kein Task mit OrderItem ${serviceItem.id} verknüpft.`);
 
@@ -307,12 +310,12 @@ try {
     return;
   }
 
-  // 🧩 Lieferdatum → nächster Werktag, falls Wochenende
+  // 🧩 Lieferdatum prüfen + auf Werktag schieben
   function normalizeToWeekday(date) {
     const d = new Date(date);
     const day = d.getDay();
-    if (day === 6) d.setDate(d.getDate() + 2); // Samstag → Montag
-    else if (day === 0) d.setDate(d.getDate() + 1); // Sonntag → Montag
+    if (day === 6) d.setDate(d.getDate() + 2);
+    else if (day === 0) d.setDate(d.getDate() + 1);
     return d;
   }
 
@@ -320,12 +323,12 @@ try {
   const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
   const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0);
 
-  // 📋 Kalender-Payload mit Outlook-relevanten Feldern
+  // 📋 Kalender-Payload (Outlook-kompatibel)
   const calendarPayload = {
     calendarId,
     mailAccountId,
     ownerId,
-    userId: ownerId, // Outlook-User, damit Sync funktioniert
+    userId: ownerId,
     subject: `TBD SERVICE ${createdOrder.customer?.name ?? ''} // ${createdOrder.orderNumber}`,
     description: `<p>Serviceeinsatz zu Auftrag ${createdOrder.orderNumber}</p>`,
     startDate: start.getTime(),
@@ -335,14 +338,14 @@ try {
     showAs: 'BUSY'
   };
 
-  // 🧾 Neuen CalendarEvent anlegen
+  // 🧾 CalendarEvent POST
   const newEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
     method: 'POST',
     body: JSON.stringify(calendarPayload)
   });
   console.log('✅ Neuer Kalender-Event erstellt:', newEvent);
 
-  // 🔗 Task aktualisieren und CalendarEventId setzen
+  // 🔗 Task aktualisieren
   const updateBody = {
     id: taskDetail.id,
     version: taskDetail.version,
