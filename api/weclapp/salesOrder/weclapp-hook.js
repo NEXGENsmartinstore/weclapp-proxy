@@ -338,7 +338,7 @@ try {
 }
 // ---------------------------------------------------------------------
 return res.status(200).json({ ok: true, createdOrder });
-} catch (err) {
+catch (err) {
   console.error('💥 Fehler im Hook:', err);
   return res.status(500).json({ error: String(err.message || err) });
 }
