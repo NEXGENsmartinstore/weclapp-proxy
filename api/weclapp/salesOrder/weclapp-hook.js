@@ -278,118 +278,86 @@ try {
 
   console.log('✅ Task verarbeitet:', taskResult);
 
-// 6️⃣ Kalenderintegration (Outlook-kompatibel)
+// 6️⃣ Hierarchische Kalenderintegration (SalesOrder → OrderItem → Task → CalendarEvent)
 try {
-  console.log('🗓️ Starte Outlook-kompatible Kalenderintegration ...');
+  console.log('🗓️ Starte hierarchische Kalenderintegration ...');
 
-  const calendarId = '4913008';    // globaler Service-Kalender
-  const mailAccountId = '4912983'; // Outlook-Verknüpfung
-  const ownerId = '41906';         // Besitzer des Kalenders (service@nexgen-si.de)
+  const calendarId = '4913008';      // Service-Kalender
+  const mailAccountId = '4912983';   // Outlook-Mailkonto des Servicekalenders
+  const ownerId = '41906';           // Benutzer-ID des Servicekalender-Owners
+  const defaultTechUser = process.env.WECLAPP_DEFAULT_TECH_USERID || '298775';
 
-  // Hilfsfunktion: Samstag/Sonntag → Montag
-  function normalizeToWeekday(date) {
-    const day = date.getDay(); // 0=So, 6=Sa
-    if (day === 6) date.setDate(date.getDate() + 2); // Samstag → Montag
-    else if (day === 0) date.setDate(date.getDate() + 1); // Sonntag → Montag
-    return date;
+  // 🧩 SERVICE-Position im Auftrag suchen
+  const serviceItem = createdOrder.orderItems?.find(
+    i => i.itemType === 'SERVICE' || i.articleId === '4074816'
+  );
+  if (!serviceItem) throw new Error('Keine SERVICE-Position im Auftrag gefunden.');
+
+  // 🧩 SalesOrderItem-Details laden → Task finden
+  const orderItemDetail = await weclappFetch(`/salesOrderItem/id/${serviceItem.id}`, { method: 'GET' });
+  const taskId = orderItemDetail.tasks?.[0]?.id;
+  if (!taskId) throw new Error(`Kein Task mit OrderItem ${serviceItem.id} verknüpft.`);
+
+  // 🧩 Task laden
+  const taskDetail = await weclappFetch(`/task/id/${taskId}`, { method: 'GET' });
+
+  // 📆 Wenn Task bereits Kalender-Eintrag hat → abbrechen
+  if (taskDetail.calendarEventId) {
+    console.log(`ℹ️ Task ${taskId} bereits mit CalendarEvent ${taskDetail.calendarEventId} verknüpft – kein neuer Eintrag notwendig.`);
+    return;
   }
 
-  // Datum vorbereiten (Lieferdatum korrigieren)
-  let base = new Date(createdOrder.plannedDeliveryDate);
-  base = normalizeToWeekday(base);
+  // 🧩 Lieferdatum → nächster Werktag, falls Wochenende
+  function normalizeToWeekday(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    if (day === 6) d.setDate(d.getDate() + 2); // Samstag → Montag
+    else if (day === 0) d.setDate(d.getDate() + 1); // Sonntag → Montag
+    return d;
+  }
+
+  let base = normalizeToWeekday(createdOrder.plannedDeliveryDate);
   const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0, 0);
   const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0);
 
-  // 📋 Aktuelle Taskdetails abrufen
-  const taskDetails = await weclappFetch(`/task/id/${taskResult.id}`, { method: 'GET' });
+  // 📋 Kalender-Payload mit Outlook-relevanten Feldern
+  const calendarPayload = {
+    calendarId,
+    mailAccountId,
+    ownerId,
+    userId: ownerId, // Outlook-User, damit Sync funktioniert
+    subject: `TBD SERVICE ${createdOrder.customer?.name ?? ''} // ${createdOrder.orderNumber}`,
+    description: `<p>Serviceeinsatz zu Auftrag ${createdOrder.orderNumber}</p>`,
+    startDate: start.getTime(),
+    endDate: end.getTime(),
+    allDayEvent: false,
+    privateEvent: false,
+    showAs: 'BUSY'
+  };
 
-  // ---------------------------------------------------------------------
-  // 🧠 Schritt 1: Prüfen, ob Task schon einen Kalenderbezug hat
-  // ---------------------------------------------------------------------
-  if (taskDetails.calendarEventId) {
-    console.log(`ℹ️ Task ${taskResult.id} hat bereits calendarEventId ${taskDetails.calendarEventId} – aktualisiere Betreff.`);
-    const existingEvent = await weclappFetch(`/calendarEvent/id/${taskDetails.calendarEventId}`, { method: 'GET' });
+  // 🧾 Neuen CalendarEvent anlegen
+  const newEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
+    method: 'POST',
+    body: JSON.stringify(calendarPayload)
+  });
+  console.log('✅ Neuer Kalender-Event erstellt:', newEvent);
 
-    const updatedEvent = {
-      ...existingEvent,
-      subject: taskSubject,
-      calendarId,
-      mailAccountId,
-      ownerId,
-      startDate: start.getTime(),
-      endDate: end.getTime(),
-      showAs: 'BUSY'
-    };
+  // 🔗 Task aktualisieren und CalendarEventId setzen
+  const updateBody = {
+    id: taskDetail.id,
+    version: taskDetail.version,
+    calendarEventId: newEvent.id
+  };
+  await weclappFetch(`/task/id/${taskDetail.id}?ignoreMissingProperties=true`, {
+    method: 'PUT',
+    body: JSON.stringify(updateBody)
+  });
 
-    await weclappFetch(`/calendarEvent/id/${taskDetails.calendarEventId}?ignoreMissingProperties=true`, {
-      method: 'PUT',
-      body: JSON.stringify(updatedEvent)
-    });
+  console.log(`🔗 Task ${taskDetail.id} erfolgreich mit CalendarEvent ${newEvent.id} verknüpft.`);
+  console.log('✅ Outlook-kompatible Kalenderintegration abgeschlossen.');
 
-    console.log('✅ Bestehenden Kalender-Event aktualisiert.');
-  } else {
-    // ---------------------------------------------------------------------
-    // 🧠 Schritt 2: Prüfen, ob bereits ein passender Event existiert
-    // ---------------------------------------------------------------------
-    const existingEvents = await weclappFetch(`/calendarEvent?maxResults=50&sort=-createdDate`, { method: 'GET' });
-    const foundEvent = (existingEvents.result || []).find(ev =>
-      ev.subject?.includes(createdOrder.orderNumber) ||
-      ev.subject?.includes(createdOrder.customer?.name || '')
-    );
-
-    if (foundEvent) {
-      console.log(`🔗 Bereits vorhandener Event gefunden (${foundEvent.id}) – verknüpfe Task.`);
-      const latestTask = await weclappFetch(`/task/id/${taskResult.id}`, { method: 'GET' });
-      const updateBody = {
-        id: latestTask.id,
-        version: latestTask.version,
-        calendarEventId: foundEvent.id
-      };
-      await weclappFetch(`/task/id/${latestTask.id}?ignoreMissingProperties=true`, {
-        method: 'PUT',
-        body: JSON.stringify(updateBody)
-      });
-      console.log('✅ Task erfolgreich mit vorhandenem Event verknüpft.');
-    } else {
-      // ---------------------------------------------------------------------
-      // 🧠 Schritt 3: Kein Event vorhanden → neuen Outlook-Event erstellen
-      // ---------------------------------------------------------------------
-      console.log(`📅 Kein vorhandener Event gefunden → erstelle neuen Outlook-Kalendereintrag für Task ${taskResult.id}`);
-
-      const calendarPayload = {
-        calendarId,
-        mailAccountId,
-        ownerId,
-        userId: defaultTechUser, // sichtbarer Verantwortlicher
-        subject: taskSubject,
-        description: `<p>Serviceeinsatz zu Auftrag ${createdOrder.orderNumber}</p>`,
-        startDate: start.getTime(),
-        endDate: end.getTime(),
-        allDayEvent: false,
-        privateEvent: false,
-        showAs: 'BUSY'
-      };
-
-      const newEvent = await weclappFetch('/calendarEvent?ignoreMissingProperties=true', {
-        method: 'POST',
-        body: JSON.stringify(calendarPayload)
-      });
-
-      console.log('✅ Neuer Outlook-Kalender-Event erstellt:', newEvent);
-
-      // 🔗 Task mit neuem Kalender-Event verknüpfen
-      await weclappFetch(`/task/id/${taskResult.id}?ignoreMissingProperties=true`, {
-        method: 'PUT',
-        body: JSON.stringify({ calendarEventId: newEvent.id })
-      });
-
-      console.log('🔗 Task mit Outlook-Kalender-Event verknüpft.');
-    }
-  }
-
-  console.log('✅ Outlook-Kalenderintegration abgeschlossen.');
-} catch (calErr) {
-  console.warn('⚠️ Fehler beim Kalender-Eintrag:', calErr.message);
+} catch (err) {
+  console.warn('⚠️ Fehler in hierarchischer Kalenderintegration:', err.message);
 }
 
 
