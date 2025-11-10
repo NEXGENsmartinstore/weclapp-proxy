@@ -5,6 +5,7 @@ let _allMarkers = [];
 let _categoryMarkers = {};
 let _activeCategories = new Set();
 let _markersById = {};
+let _infoWindow = null;
 
 // ---------- Kategorie Mapping ----------
 const SALES_CHANNEL_NAMES = {
@@ -148,7 +149,9 @@ const rec = {
   status: order.status,
   monitorStatus: WECLAPP_API.getMonitorStatus(order),
   isBigDeal: WECLAPP_API.isBigDeal(order),
-  isService: WECLAPP_API.isServiceOrder(order)
+  isService: WECLAPP_API.isServiceOrder(order),
+  orderNumber: order.orderNumber || '',
+  items: Array.isArray(order.orderItems) ? order.orderItems : []
 };
 
 
@@ -239,12 +242,10 @@ function createStyledMarker(rec, loc) {
 
   marker.addListener("gmp-click", () => {
     const categoryName = SALES_CHANNEL_NAMES[rec.category] || rec.category || "—";
-    const uiBase = (window.WECLAPP_CONFIG && window.WECLAPP_CONFIG.uiBase)
-      ? window.WECLAPP_CONFIG.uiBase
-      : 'https://nexgen.weclapp.com';
+    const deeplink = WECLAPP_API.buildOrderDeeplink(rec.id);
 
-    const deeplink = `${uiBase.replace(/\/$/, '')}/app/sales-order/${encodeURIComponent(rec.id)}`;
-
+    const itemsHtml = buildItemsListHtml(rec.items);
+    const linkLabel = rec.orderNumber ? escapeHtml(rec.orderNumber) : 'weclapp öffnen';
     const html = `
       <div style="font-size:14px;line-height:1.45; background:#fff; color:#000; padding:6px 8px; border-radius:6px;">
         <div style="font-weight:700;margin-bottom:2px;">${escapeHtml(rec.bezeichnung)}</div>
@@ -252,10 +253,16 @@ function createStyledMarker(rec, loc) {
         <div><b>Kategorie:</b> ${escapeHtml(categoryName)}</div>
         <div><b>Status:</b> ${escapeHtml(rec.status)}</div>
         <div><b>Lieferdatum:</b> ${formatDate(rec.plannedDelDate)}</div>
-        <div style="margin-top:4px;"><b>Link:</b> <a href="${deeplink}" target="_blank" rel="noopener">weclapp öffnen</a></div>
+        <div style="margin-top:4px;"><b>Positionen:</b>${itemsHtml}</div>
+        <div style="margin-top:4px;"><b>Link:</b> <a href="${deeplink}" target="_blank" rel="noopener">${linkLabel}</a></div>
       </div>
     `;
-    new google.maps.InfoWindow({ content: html }).open(_map, marker);
+    if (!_infoWindow) {
+      _infoWindow = new google.maps.InfoWindow();
+    }
+    _infoWindow.close();
+    _infoWindow.setContent(html);
+    _infoWindow.open({ map: _map, anchor: marker });
   });
 
   return marker;
@@ -420,6 +427,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 // ---------- Helpers ----------
+function buildItemsListHtml(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) {
+    return ' <i>Keine Positionen</i>';
+  }
+
+  const entries = list.map(item => `<li>${renderOrderItemLine(item)}</li>`).join('');
+  return `<ul style="margin:4px 0 0 0; padding-left:18px;">${entries}</ul>`;
+}
+
+function renderOrderItemLine(item) {
+  if (!item || typeof item !== 'object') return '';
+  const parts = [];
+
+  if (item.positionNumber !== undefined && item.positionNumber !== null && item.positionNumber !== '') {
+    parts.push(`#${escapeHtml(item.positionNumber)}`);
+  }
+  if (item.articleNumber) {
+    parts.push(escapeHtml(item.articleNumber));
+  }
+  const nameOrDesc = item.name || item.description;
+  if (nameOrDesc) {
+    parts.push(escapeHtml(nameOrDesc));
+  }
+
+  const quantity = item.quantity ?? item.plannedQuantity ?? item.confirmedQuantity;
+  const unit = item.quantityUnitName || item.quantityUnit || item.unitName || '';
+  let quantityText = '';
+  if (quantity !== undefined && quantity !== null && quantity !== '') {
+    const qtyString = escapeHtml(quantity);
+    const unitString = unit ? ` ${escapeHtml(unit)}` : '';
+    quantityText = ` (${qtyString}${unitString})`;
+  }
+
+  const content = parts.length > 0 ? parts.join(' – ') : '—';
+  return `${content}${quantityText}`;
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
