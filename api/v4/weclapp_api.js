@@ -82,7 +82,12 @@ function isServiceOrder(order) {
  * Deeplink erzeugen
  */
 function buildOrderDeeplink(orderId) {
-  return `${API_CONFIG.uiBase}/app/sales-order/${encodeURIComponent(orderId)}`;
+  return buildResourceDeeplink('sales-order', orderId);
+}
+
+function buildResourceDeeplink(resource, id) {
+  if (!id) return '#';
+  return `${API_CONFIG.uiBase}/app/${resource}/${encodeURIComponent(id)}`;
 }
 
 // ---------------- Export ----------------
@@ -93,5 +98,6 @@ window.WECLAPP_API = {
   getMonitorStatus,
   isBigDeal,
   isServiceOrder,
-  buildOrderDeeplink
+  buildOrderDeeplink,
+  buildResourceDeeplink
 };
