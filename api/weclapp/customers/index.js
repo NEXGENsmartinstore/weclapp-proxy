@@ -2,29 +2,21 @@
 //
 // Kunden-API für MAP v5
 // ---------------------------------------------------------------
-// Features:
-// - Holt Kunden + Adressen aus weclapp
-// - Schlagwortsuche "Berlin EMH"
-// - maxResults (default 50)
-// - Liefert schlanke Map-Daten
-// - Noch ohne Geocoding (lat/lng = null)
-//
-// Erwartete Query-Parameter:
-// ?q=Berlin EMH&limit=50
-//
-// ---------------------------------------------------------------
 
 const WECLAPP_HOST = process.env.WECLAPP_HOST;
 const WECLAPP_TOKEN = process.env.WECLAPP_TOKEN;
 
-async function weclappFetch(path) {
-  const url = `${WECLAPP_HOST}${path}`;
+async function weclappFetch(pathAndQuery) {
+  const base = WECLAPP_HOST.replace(/\/$/, "");
+  const url = `${base}/webapp/api/v1${pathAndQuery}`;
+  console.log("→ Customers forward to:", url);
+
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      "AuthenticationToken": WECLAPP_TOKEN,
-      "Accept": "application/json"
-    }
+      AuthenticationToken: WECLAPP_TOKEN,
+      Accept: "application/json",
+    },
   });
 
   if (!res.ok) {
@@ -37,17 +29,32 @@ async function weclappFetch(path) {
 }
 
 export default async function handler(req, res) {
+  // --- CORS wie bei /api/weclapp/index.js ---
+  const allowed = [
+    "https://smart-instore.eu",
+    "https://smart-instore.vercel.app",
+    "http://localhost:3000",
+  ];
+  const origin = req.headers.origin;
+  if (allowed.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   try {
     const q = (req.query.q || "").trim();
     const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
 
-    // Wörter der Suche extrahieren
     const tokens = q
       .toLowerCase()
       .split(/\s+/)
       .filter(Boolean);
 
-    // Basis-Abfrage an weclapp
     const properties = [
       "id",
       "customerNumber",
@@ -67,20 +74,25 @@ export default async function handler(req, res) {
       "addresses.city",
       "addresses.countryCode",
       "addresses.primeAddress",
-      "addresses.deliveryAddress"
+      "addresses.deliveryAddress",
     ].join(",");
 
-    const weclappData = await weclappFetch(
-      `/customer?partyType-eq=ORGANIZATION&blocked-eq=false&insolvent-eq=false&maxResults=500&expand=addresses&properties=${properties}`
-    );
+    const pathAndQuery =
+      `/customer?partyType-eq=ORGANIZATION` +
+      `&blocked-eq=false` +
+      `&insolvent-eq=false` +
+      `&maxResults=500` +
+      `&expand=addresses` +
+      `&properties=${encodeURIComponent(properties)}`;
 
-    // Mapping der weclapp-Daten
+    const weclappData = await weclappFetch(pathAndQuery);
+
     const mapped = weclappData.map((c) => {
-      // beste Adresse finden
-      let addr =
-        (c.addresses || []).find((a) => a.primeAddress) ||
-        (c.addresses || []).find((a) => a.deliveryAddress) ||
-        c.addresses?.[0] ||
+      const addresses = c.addresses || [];
+      const addr =
+        addresses.find((a) => a.primeAddress) ||
+        addresses.find((a) => a.deliveryAddress) ||
+        addresses[0] ||
         null;
 
       return {
@@ -94,28 +106,25 @@ export default async function handler(req, res) {
         city: addr?.city || "",
         countryCode: addr?.countryCode || "DE",
         lat: null,
-        lng: null
+        lng: null,
       };
     });
 
-    // Filter nach Suchbegriffen (AND-Logik)
     const filtered = mapped.filter((item) => {
-      if (tokens.length === 0) return true;
-
-      const hay =
-        `${item.name} ${item.name2} ${item.city} ${item.zip} ${item.customerNumber} ${item.salesChannel}`
-          .toLowerCase();
-
+      if (!tokens.length) return true;
+      const hay = (
+        `${item.name} ${item.name2} ${item.city} ${item.zip} ` +
+        `${item.customerNumber} ${item.salesChannel}`
+      ).toLowerCase();
       return tokens.every((t) => hay.includes(t));
     });
 
-    // Begrenzen
     const result = filtered.slice(0, limit);
 
     res.status(200).json({
       total: filtered.length,
       returned: result.length,
-      items: result
+      items: result,
     });
   } catch (err) {
     console.error("customer API error:", err);
