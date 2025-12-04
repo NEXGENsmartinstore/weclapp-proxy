@@ -52,9 +52,9 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------
     // SPEZIALFALL: v5-Kunden-API ("customers-v5")
     // -----------------------------------------------------------
-    if (path === "customers-v5") {
+        if (path === "customers-v5") {
       const q = (params.q || "").trim();
-      const limit = Math.min(parseInt(params.limit || "50", 10), 200);
+      const limit = Math.min(parseInt(params.limit || "50", 10), 500);
 
       const tokens = q
         .toLowerCase()
@@ -83,56 +83,80 @@ export default async function handler(req, res) {
         "addresses.deliveryAddress",
       ].join(",");
 
-      const pathAndQuery =
-        `/customer?partyType-eq=ORGANIZATION` +
-        `&blocked-eq=false` +
-        `&insolvent-eq=false` +
-        `&maxResults=500` +
-        `&expand=addresses` +
-        `&properties=${encodeURIComponent(properties)}`;
+      const PAGE_SIZE = 500;        // weclapp maxResults pro Seite
+      const MAX_PAGES = 20;         // Sicherheitslimit: max 20*500 = 10.000 Kunden
 
-      const weclappData = await weclappFetch(pathAndQuery);
+      let offset = 0;
+      let filtered = [];
+      let totalMatches = 0;
+      let page = 0;
 
-      const mapped = weclappData.map((c) => {
-        const addresses = c.addresses || [];
-        const addr =
-          addresses.find((a) => a.primeAddress) ||
-          addresses.find((a) => a.deliveryAddress) ||
-          addresses[0] ||
-          null;
+      while (page < MAX_PAGES) {
+        const pathAndQuery =
+          `/customer?partyType-eq=ORGANIZATION` +
+          `&blocked-eq=false` +
+          `&insolvent-eq=false` +
+          `&maxResults=${PAGE_SIZE}` +
+          `&offset=${offset}` +
+          `&expand=addresses` +
+          `&properties=${encodeURIComponent(properties)}`;
 
-        return {
-          id: c.id,
-          customerNumber: c.customerNumber,
-          name: c.company || "",
-          name2: c.company2 || "",
-          salesChannel: c.salesChannel || "",
-          street: addr?.street1 || "",
-          zip: (addr?.zipcode || "").trim(),
-          city: addr?.city || "",
-          countryCode: addr?.countryCode || "DE",
-          lat: null,
-          lng: null,
-        };
-      });
+        const chunk = await weclappFetch(pathAndQuery);
+        if (!Array.isArray(chunk) || !chunk.length) break;
 
-      const filtered = mapped.filter((item) => {
-        if (!tokens.length) return true;
-        const hay = (
-          `${item.name} ${item.name2} ${item.city} ${item.zip} ` +
-          `${item.customerNumber} ${item.salesChannel}`
-        ).toLowerCase();
-        return tokens.every((t) => hay.includes(t));
-      });
+        const mapped = chunk.map((c) => {
+          const addresses = c.addresses || [];
+          const addr =
+            addresses.find((a) => a.primeAddress) ||
+            addresses.find((a) => a.deliveryAddress) ||
+            addresses[0] ||
+            null;
 
-      const result = filtered.slice(0, limit);
+          return {
+            id: c.id,
+            customerNumber: c.customerNumber,
+            name: c.company || "",
+            name2: c.company2 || "",
+            salesChannel: c.salesChannel || "",
+            street: addr?.street1 || "",
+            zip: (addr?.zipcode || "").trim(),
+            city: addr?.city || "",
+            countryCode: addr?.countryCode || "DE",
+            lat: null,
+            lng: null,
+          };
+        });
+
+        const filteredChunk = mapped.filter((item) => {
+          if (!tokens.length) return true;
+          const hay = (
+            `${item.name} ${item.name2} ${item.city} ${item.zip} ` +
+            `${item.customerNumber} ${item.salesChannel}`
+          ).toLowerCase();
+          return tokens.every((t) => hay.includes(t));
+        });
+
+        totalMatches += filteredChunk.length;
+
+        // nur so viele zurückgeben, wie der Client angefordert hat
+        filtered.push(...filteredChunk);
+        if (filtered.length >= limit) {
+          filtered = filtered.slice(0, limit);
+          break;
+        }
+
+        // nächste Seite
+        offset += PAGE_SIZE;
+        page += 1;
+      }
 
       return res.status(200).json({
-        total: filtered.length,
-        returned: result.length,
-        items: result,
+        total: totalMatches,       // wie viele Treffer insgesamt (vor limit)
+        returned: filtered.length, // wie viele wir zurückgeben
+        items: filtered,
       });
     }
+
 
     // -----------------------------------------------------------
     // STANDARD-PROXY (v4 & alles andere)
