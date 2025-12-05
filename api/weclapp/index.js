@@ -50,112 +50,120 @@ export default async function handler(req, res) {
     const { path = "", ...params } = req.query;
 
     // -----------------------------------------------------------
-    // SPEZIALFALL: v5-Kunden-API ("customers-v5")
-    // -----------------------------------------------------------
-        if (path === "customers-v5") {
-      const q = (params.q || "").trim();
-      const limit = Math.min(parseInt(params.limit || "50", 10), 500);
+// SPEZIALFALL: v5-Kunden-API ("customers-v5")
+// -----------------------------------------------------------
+if (path === "customers-v5") {
+  const q = (params.q || "").trim();
 
-      const tokens = q
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(Boolean);
+  // limit: 0 oder nicht gesetzt => "kein Limit" (alles laden)
+  const rawLimit = parseInt(params.limit || "0", 10);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 5000) : 0;
+  const unlimited = !limit; // true = alles laden
 
-      const properties = [
-        "id",
-        "customerNumber",
-        "company",
-        "company2",
-        "salesChannel",
-        "phone",
-        "email",
-        "website",
-        "parentPartyId",
-        "primaryAddressId",
-        "deliveryAddressId",
-        "lastModifiedDate",
-        "addresses.id",
-        "addresses.street1",
-        "addresses.zipcode",
-        "addresses.city",
-        "addresses.countryCode",
-        "addresses.primeAddress",
-        "addresses.deliveryAddress",
-      ].join(",");
+  const tokens = q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
 
-      const PAGE_SIZE = 500;        // weclapp maxResults pro Seite
-      const MAX_PAGES = 20;         // Sicherheitslimit: max 20*500 = 10.000 Kunden
+  const properties = [
+    "id",
+    "customerNumber",
+    "company",
+    "company2",
+    "salesChannel",
+    "phone",
+    "email",
+    "website",
+    "parentPartyId",
+    "primaryAddressId",
+    "deliveryAddressId",
+    "lastModifiedDate",
+    "addresses.id",
+    "addresses.street1",
+    "addresses.zipcode",
+    "addresses.city",
+    "addresses.countryCode",
+    "addresses.primeAddress",
+    "addresses.deliveryAddress",
+  ].join(",");
 
-      let offset = 0;
-      let filtered = [];
-      let totalMatches = 0;
-      let page = 0;
+  const PAGE_SIZE = 500;  // weclapp maxResults pro Seite
+  const MAX_PAGES = 20;   // Sicherheitslimit: max 10.000 Kunden
 
-      while (page < MAX_PAGES) {
-        const pathAndQuery =
-          `/customer?partyType-eq=ORGANIZATION` +
-          `&blocked-eq=false` +
-          `&insolvent-eq=false` +
-          `&maxResults=${PAGE_SIZE}` +
-          `&offset=${offset}` +
-          `&expand=addresses` +
-          `&properties=${encodeURIComponent(properties)}`;
+  let offset = 0;
+  let filtered = [];
+  let totalMatches = 0;
+  let page = 0;
 
-        const chunk = await weclappFetch(pathAndQuery);
-        if (!Array.isArray(chunk) || !chunk.length) break;
+  while (page < MAX_PAGES) {
+    const pathAndQuery =
+      `/customer?partyType-eq=ORGANIZATION` +
+      `&blocked-eq=false` +
+      `&insolvent-eq=false` +
+      `&maxResults=${PAGE_SIZE}` +
+      `&offset=${offset}` +
+      `&expand=addresses` +
+      `&properties=${encodeURIComponent(properties)}`;
 
-        const mapped = chunk.map((c) => {
-          const addresses = c.addresses || [];
-          const addr =
-            addresses.find((a) => a.primeAddress) ||
-            addresses.find((a) => a.deliveryAddress) ||
-            addresses[0] ||
-            null;
+    const chunk = await weclappFetch(pathAndQuery);
+    if (!Array.isArray(chunk) || !chunk.length) break;
 
-          return {
-            id: c.id,
-            customerNumber: c.customerNumber,
-            name: c.company || "",
-            name2: c.company2 || "",
-            salesChannel: c.salesChannel || "",
-            street: addr?.street1 || "",
-            zip: (addr?.zipcode || "").trim(),
-            city: addr?.city || "",
-            countryCode: addr?.countryCode || "DE",
-            lat: null,
-            lng: null,
-          };
-        });
+    const mapped = chunk.map((c) => {
+      const addresses = c.addresses || [];
+      const addr =
+        addresses.find((a) => a.primeAddress) ||
+        addresses.find((a) => a.deliveryAddress) ||
+        addresses[0] ||
+        null;
 
-        const filteredChunk = mapped.filter((item) => {
-          if (!tokens.length) return true;
-          const hay = (
-            `${item.name} ${item.name2} ${item.city} ${item.zip} ` +
-            `${item.customerNumber} ${item.salesChannel}`
-          ).toLowerCase();
-          return tokens.every((t) => hay.includes(t));
-        });
+      return {
+        id: c.id,
+        customerNumber: c.customerNumber,
+        name: c.company || "",
+        name2: c.company2 || "",
+        salesChannel: c.salesChannel || "",
+        street: addr?.street1 || "",
+        zip: (addr?.zipcode || "").trim(),
+        city: addr?.city || "",
+        countryCode: addr?.countryCode || "DE",
+        lat: null,
+        lng: null,
+      };
+    });
 
-        totalMatches += filteredChunk.length;
-
-        // nur so viele zurückgeben, wie der Client angefordert hat
-        filtered.push(...filteredChunk);
-        if (filtered.length >= limit) {
-          filtered = filtered.slice(0, limit);
-          break;
+    for (const item of mapped) {
+      // Text-Filter über alle Seiten
+      if (tokens.length) {
+        const hay = (
+          `${item.name} ${item.name2} ${item.city} ${item.zip} ` +
+          `${item.customerNumber} ${item.salesChannel}`
+        ).toLowerCase();
+        if (!tokens.every((t) => hay.includes(t))) {
+          continue;
         }
-
-        // nächste Seite
-        offset += PAGE_SIZE;
-        page += 1;
       }
 
-      return res.status(200).json({
-        total: totalMatches,       // wie viele Treffer insgesamt (vor limit)
-        returned: filtered.length, // wie viele wir zurückgeben
-        items: filtered,
-      });
+      // Treffer zählen – unabhängig davon, ob wir ihn schon in "items" aufnehmen
+      totalMatches++;
+
+      // Nur bis zum Limit in "items" aufnehmen, aber trotzdem weiter iterieren
+      if (unlimited || filtered.length < limit) {
+        filtered.push(item);
+      }
     }
+
+    offset += PAGE_SIZE;
+    page += 1;
+  }
+
+  return res.status(200).json({
+    total: totalMatches,       // Treffer gesamt (über ALLE Seiten)
+    returned: filtered.length, // wie viele wir im Array mitgeben
+    items: filtered,
+  });
+}
+
 
 
     // -----------------------------------------------------------
