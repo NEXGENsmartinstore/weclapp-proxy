@@ -71,17 +71,17 @@ export default async function handler(req, res) {
   try {
     const { path = "", ...params } = req.query;
 
-    // -----------------------------------------------------------
-// SPEZIALFALL: v5-Kunden-API ("customers-v5")
+// -----------------------------------------------------------
+// SPEZIALFALL: v5-Kunden-API ("customers-v5") - basiert auf v2
 // -----------------------------------------------------------
 if (path === "customers-v5") {
   const q = (params.q || "").trim();
 
-  // limit: 0 oder nicht gesetzt => "kein Limit" (alles laden)
-  const rawLimit = parseInt(params.limit || "0", 10);
+  // limit: 0 oder nicht gesetzt => "kein Limit" (alle laden)
+  const rawLimit = parseInt(params.limit ?? "0", 10);
   const limit =
     Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 5000) : 0;
-  const unlimited = !limit; // true = alles laden
+  const unlimited = !limit;
 
   const tokens = q
     .toLowerCase()
@@ -110,26 +110,28 @@ if (path === "customers-v5") {
     "addresses.deliveryAddress",
   ].join(",");
 
-  const PAGE_SIZE = 500;  // weclapp maxResults pro Seite
-  const MAX_PAGES = 20;   // Sicherheitslimit: max 10.000 Kunden
+  const PAGE_SIZE = 1000; // v2: max. 1000 laut Doku
+  const MAX_PAGES = 10;   // Sicherheitslimit: 10*1000 = 10.000
 
-  let offset = 0;
-  let filtered = [];
+  let page = 1;
   let totalMatches = 0;
-  let page = 0;
+  const items = [];
 
-  while (page < MAX_PAGES) {
+  while (page <= MAX_PAGES) {
     const pathAndQuery =
-      `/customer?partyType-eq=ORGANIZATION` +
+      `/customer?page=${page}` +
+      `&pageSize=${PAGE_SIZE}` +
+      `&partyType-eq=ORGANIZATION` +
       `&blocked-eq=false` +
       `&insolvent-eq=false` +
-      `&maxResults=${PAGE_SIZE}` +
-      `&offset=${offset}` +
       `&expand=addresses` +
       `&properties=${encodeURIComponent(properties)}`;
 
-    const chunk = await weclappFetch(pathAndQuery);
-    if (!Array.isArray(chunk) || !chunk.length) break;
+    const chunk = await weclappFetchV2(pathAndQuery);
+    if (!Array.isArray(chunk) || !chunk.length) {
+      // keine Daten mehr -> Ende der Pagination
+      break;
+    }
 
     const mapped = chunk.map((c) => {
       const addresses = c.addresses || [];
@@ -155,36 +157,43 @@ if (path === "customers-v5") {
     });
 
     for (const item of mapped) {
-      // Text-Filter über alle Seiten
+      // Volltext-Filter (über Namen, Ort, PLZ, Kundennummer, Kanal)
       if (tokens.length) {
         const hay = (
           `${item.name} ${item.name2} ${item.city} ${item.zip} ` +
           `${item.customerNumber} ${item.salesChannel}`
         ).toLowerCase();
-        if (!tokens.every((t) => hay.includes(t))) {
-          continue;
-        }
+        if (!tokens.every((t) => hay.includes(t))) continue;
       }
 
-      // Treffer zählen – unabhängig davon, ob wir ihn schon in "items" aufnehmen
       totalMatches++;
 
-      // Nur bis zum Limit in "items" aufnehmen, aber trotzdem weiter iterieren
-      if (unlimited || filtered.length < limit) {
-        filtered.push(item);
+      // nur so viele Items in die Antwort pushen, wie gewünscht
+      if (unlimited || items.length < limit) {
+        items.push(item);
       }
     }
 
-    offset += PAGE_SIZE;
+    // Wenn wir das gewünschte Limit erreicht haben, können wir abbrechen
+    if (!unlimited && items.length >= limit) {
+      break;
+    }
+
+    // Wenn weniger als PAGE_SIZE Datensätze zurückkommen, ist das die letzte Seite
+    if (chunk.length < PAGE_SIZE) {
+      break;
+    }
+
     page += 1;
   }
 
   return res.status(200).json({
-    total: totalMatches,       // Treffer gesamt (über ALLE Seiten)
-    returned: filtered.length, // wie viele wir im Array mitgeben
-    items: filtered,
+    total: totalMatches,    // Treffer gesamt (über alle Seiten)
+    returned: items.length, // wie viele wir im Array mitgeben
+    items,
   });
 }
+
 
 
 
