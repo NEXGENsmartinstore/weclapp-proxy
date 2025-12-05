@@ -27,6 +27,28 @@ async function weclappFetch(pathAndQuery) {
   const json = await res.json();
   return json.result || json;
 }
+async function weclappFetchV2(pathAndQuery) {
+  const base = WECLAPP_HOST.replace(/\/$/, "");
+  const url = `${base}/webapp/api/v2${pathAndQuery}`;
+  console.log("→ weclapp forward to (v2):", url);
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      AuthenticationToken: WECLAPP_TOKEN,
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Weclapp API v2 error ${res.status}: ${txt}`);
+  }
+
+  const json = await res.json();
+  // v2 liefert ebenfalls { result: [...] } + Meta
+  return json.result || json;
+}
 
 export default async function handler(req, res) {
   // --- CORS ---
